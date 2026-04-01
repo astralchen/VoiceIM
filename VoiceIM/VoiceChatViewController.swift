@@ -16,12 +16,23 @@ final class VoiceChatViewController: UIViewController {
     // MARK: - UI
 
     private var collectionView: UICollectionView!
-    private let bottomBar    = UIView()
-    private let textField    = UITextField()
-    private let sendButton   = UIButton(type: .system)
-    private let recordButton = UIButton(type: .system)
-    private let overlayView  = RecordingOverlayView()
+    private let bottomBar       = UIView()
+    private let textField       = UITextField()
+    private let sendButton      = UIButton(type: .system)
+    /// 文字/语音输入模式切换按钮（右侧固定）
+    /// - 文字模式：mic.fill 图标，点击切换到语音模式
+    /// - 语音模式：keyboard 图标，点击切换回文字模式
+    private let toggleButton    = UIButton(type: .system)
+    /// 语音模式下替换文字输入框的"按住说话"按钮，长按触发录音
+    private let voiceInputButton = UIButton(type: .system)
+    private let overlayView     = RecordingOverlayView()
     private var bottomBarBottomConstraint: NSLayoutConstraint!
+
+    // MARK: - 输入模式
+
+    private enum InputMode { case text, voice }
+    /// 当前输入模式，切换时同步更新底栏控件显示状态
+    private var inputMode: InputMode = .text
 
     // MARK: - DiffableDataSource
 
@@ -176,7 +187,22 @@ final class VoiceChatViewController: UIViewController {
             bottomBar.heightAnchor.constraint(equalToConstant: 56),
         ])
 
-        // 文字输入框
+        // ── 切换按钮（右侧固定）────────────────────────────────────────────────
+        // 文字模式：mic.fill；语音模式：keyboard —— 点击在两种输入模式间切换
+        toggleButton.setImage(UIImage(systemName: "mic.fill"), for: .normal)
+        toggleButton.tintColor = .systemBlue
+        toggleButton.translatesAutoresizingMaskIntoConstraints = false
+        toggleButton.addTarget(self, action: #selector(toggleInputMode), for: .touchUpInside)
+        bottomBar.addSubview(toggleButton)
+
+        NSLayoutConstraint.activate([
+            toggleButton.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -12),
+            toggleButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
+            toggleButton.widthAnchor.constraint(equalToConstant: 32),
+            toggleButton.heightAnchor.constraint(equalToConstant: 32),
+        ])
+
+        // ── 文字模式控件：textField + sendButton ─────────────────────────────
         textField.placeholder = "输入消息"
         textField.borderStyle = .roundedRect
         textField.returnKeyType = .send
@@ -185,7 +211,6 @@ final class VoiceChatViewController: UIViewController {
         textField.addTarget(self, action: #selector(textFieldChanged), for: .editingChanged)
         bottomBar.addSubview(textField)
 
-        // 发送按钮（初始禁用）
         sendButton.setTitle("发送", for: .normal)
         sendButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
         sendButton.isEnabled = false
@@ -194,33 +219,43 @@ final class VoiceChatViewController: UIViewController {
         sendButton.addTarget(self, action: #selector(sendTextTapped), for: .touchUpInside)
         bottomBar.addSubview(sendButton)
 
-        // 录音按钮（麦克风图标）
-        let micImage = UIImage(systemName: "mic.fill")
-        recordButton.setImage(micImage, for: .normal)
-        recordButton.tintColor = .systemBlue
-        recordButton.translatesAutoresizingMaskIntoConstraints = false
-        bottomBar.addSubview(recordButton)
-
         NSLayoutConstraint.activate([
             textField.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
             textField.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
             textField.heightAnchor.constraint(equalToConstant: 36),
 
             sendButton.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 8),
+            sendButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -8),
             sendButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
-
-            recordButton.leadingAnchor.constraint(equalTo: sendButton.trailingAnchor, constant: 8),
-            recordButton.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -12),
-            recordButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
-            recordButton.widthAnchor.constraint(equalToConstant: 32),
-            recordButton.heightAnchor.constraint(equalToConstant: 32),
         ])
 
+        // ── 语音模式控件：voiceInputButton（"按住说话"）─────────────────────
+        // 初始隐藏；切换到语音模式后显示，占据 textField + sendButton 的位置
+        voiceInputButton.setTitle("按住说话", for: .normal)
+        voiceInputButton.setTitle("松开 发送", for: .highlighted)
+        voiceInputButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+        voiceInputButton.backgroundColor = .systemBackground
+        voiceInputButton.setTitleColor(.label, for: .normal)
+        voiceInputButton.layer.cornerRadius = 8
+        voiceInputButton.layer.borderWidth = 1
+        voiceInputButton.layer.borderColor = UIColor.separator.cgColor
+        voiceInputButton.isHidden = true
+        voiceInputButton.translatesAutoresizingMaskIntoConstraints = false
+        bottomBar.addSubview(voiceInputButton)
+
+        NSLayoutConstraint.activate([
+            voiceInputButton.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
+            voiceInputButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -8),
+            voiceInputButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
+            voiceInputButton.heightAnchor.constraint(equalToConstant: 36),
+        ])
+
+        // 长按手势绑定在 voiceInputButton 上（原先在 recordButton）
         let lp = UILongPressGestureRecognizer(target: self,
                                               action: #selector(handleLongPress(_:)))
         lp.minimumPressDuration = 0.3
         lp.allowableMovement = 2000
-        recordButton.addGestureRecognizer(lp)
+        voiceInputButton.addGestureRecognizer(lp)
     }
 
     private func setupOverlay() {
@@ -241,6 +276,29 @@ final class VoiceChatViewController: UIViewController {
         }
         player.onStop = { [weak self] id in
             self?.cellForMessage(id: id)?.applyPlayState(isPlaying: false, progress: 0)
+        }
+    }
+
+    // MARK: - 输入模式切换
+
+    @objc private func toggleInputMode() {
+        switch inputMode {
+        case .text:
+            // 文字 → 语音：收起键盘，隐藏文字控件，显示"按住说话"
+            textField.resignFirstResponder()
+            inputMode = .voice
+            textField.isHidden = true
+            sendButton.isHidden = true
+            voiceInputButton.isHidden = false
+            toggleButton.setImage(UIImage(systemName: "keyboard"), for: .normal)
+        case .voice:
+            // 语音 → 文字：显示文字控件，隐藏"按住说话"，聚焦输入框
+            inputMode = .text
+            voiceInputButton.isHidden = true
+            textField.isHidden = false
+            sendButton.isHidden = false
+            toggleButton.setImage(UIImage(systemName: "mic.fill"), for: .normal)
+            textField.becomeFirstResponder()
         }
     }
 
@@ -383,14 +441,14 @@ final class VoiceChatViewController: UIViewController {
         recordState = .idle
         hideOverlay()
         updateRecordButton()
-        textField.isEnabled = true
+        if inputMode == .text { textField.isEnabled = true }
     }
 
     // MARK: - UI 更新
 
     private func showOverlay() {
-        // 录音期间禁用文字输入
-        textField.isEnabled = false
+        // 录音期间禁用文字输入（语音模式下 textField 已隐藏，仅文字模式需要禁用）
+        if inputMode == .text { textField.isEnabled = false }
         overlayView.setState(.recording)
         overlayView.updateSeconds(0)
         overlayView.isHidden = false
@@ -409,11 +467,17 @@ final class VoiceChatViewController: UIViewController {
     private func updateRecordButton() {
         switch recordState {
         case .idle:
-            recordButton.tintColor = .systemBlue
+            voiceInputButton.setTitle("按住说话", for: .normal)
+            voiceInputButton.backgroundColor = .systemBackground
+            voiceInputButton.layer.borderColor = UIColor.separator.cgColor
         case .recording:
-            recordButton.tintColor = .systemRed
+            voiceInputButton.setTitle("松开 发送", for: .normal)
+            voiceInputButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.08)
+            voiceInputButton.layer.borderColor = UIColor.systemBlue.cgColor
         case .cancelReady:
-            recordButton.tintColor = .systemGray
+            voiceInputButton.setTitle("松开 取消", for: .normal)
+            voiceInputButton.backgroundColor = UIColor.systemRed.withAlphaComponent(0.08)
+            voiceInputButton.layer.borderColor = UIColor.systemRed.cgColor
         }
     }
 
