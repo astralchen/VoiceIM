@@ -341,6 +341,37 @@ final class VoiceChatViewController: UIViewController {
     }
 
     /// 将指定消息标记为已播放，并同步更新 cell 红点
+    ///
+    /// isPlayed 更新策略（对应 VoiceMessage 中的 Hashable 设计说明）：
+    ///
+    /// - 方案 A（未采用）：将更新后的 item 写入新 snapshot 并 apply。
+    ///   由于 Hashable 仅基于 id，DiffableDataSource 无法感知 isPlayed 变化，
+    ///   即使 apply 新 snapshot，cell provider 拿到的仍是 snapshot 内旧 item，
+    ///   cell 不会刷新。若改为 id+isPlayed 的 Hashable，则会触发 delete+insert 闪烁。
+    ///
+    /// - 方案 B（当前采用）：在 messages 数组中直接修改 isPlayed，
+    ///   不触发 snapshot diff，再通过 cellForMessage 直接调用 cell.markAsRead()。
+    ///   cell provider 从 messages 数组查最新状态，保证复用时 isPlayed 也正确。
+    ///
+    /// - 方案 C（iOS 15+ 可升级）：用 snapshot.reconfigureItems 替代直接操作 cell。
+    ///   将更新后的 item 替换进 snapshot（insertItems(afterItem:) + deleteItems），
+    ///   调用 snapshot.reconfigureItems([newItem]) 后 apply，
+    ///   DiffableDataSource 原地重新调用 cell provider，cell 从新 item 读取 isPlayed，
+    ///   无需 messages 数组，也无需直接调用 cell.markAsRead()，数据驱动更彻底。
+    ///   升级时只需重写本方法，其余代码不变：
+    ///
+    ///   ```swift
+    ///   // iOS 15+ 实现示例
+    ///   var snapshot = dataSource.snapshot()
+    ///   guard let old = snapshot.itemIdentifiers(inSection: .main)
+    ///                           .first(where: { $0.id == id }), !old.isPlayed else { return }
+    ///   var updated = old
+    ///   updated.isPlayed = true
+    ///   snapshot.insertItems([updated], afterItem: old)
+    ///   snapshot.deleteItems([old])
+    ///   snapshot.reconfigureItems([updated])
+    ///   dataSource.apply(snapshot, animatingDifferences: false)
+    ///   ```
     private func markAsPlayed(id: UUID) {
         guard let idx = messages.firstIndex(where: { $0.id == id }),
               !messages[idx].isPlayed else { return }
