@@ -8,15 +8,17 @@
 
 /* Begin PBXBuildFile section */
 		073E52EDA48F57C817AEFF7C /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90CCA3FBF8E477BD57BD727 /* SceneDelegate.swift */; };
+		27683E55BC9D786AE2E5B5E6 /* TextMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88CCD6C493430571B262638D /* TextMessageCell.swift */; };
 		46F7EEB4B5859BEE7DC49804 /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DFBB50BD4826E4E6D73078D /* ToastView.swift */; };
 		4C30FD63860DD642F53B78D8 /* VoiceChatViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723663033617A575C3423C2F /* VoiceChatViewController.swift */; };
-		4E52062E69541EB4ED93D35B /* VoiceMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1BAA2CF63224517C79A359F /* VoiceMessage.swift */; };
 		6226BE708901949D7EC1BA2B /* RecordingOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA566FC8E88C9CC98ACCBE19 /* RecordingOverlayView.swift */; };
 		647F2F236D8CA0BC26CBE4DC /* VoiceCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF347A545B7A1A236ADB531D /* VoiceCacheManager.swift */; };
+		6A6495CF5DA4CE57A952589D /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 99648386B953F022B1C8BB44 /* Launch Screen.storyboard */; };
 		725BE06B150B53B3ED8C688E /* VoiceRecordManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F41F0A46908331582861C001 /* VoiceRecordManager.swift */; };
 		74EFD26EA6213DE7246C266E /* VoicePlaybackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E3E86A4018F9AD5C4752EC1 /* VoicePlaybackManager.swift */; };
 		A38F3DC2E33EA65CC7CC25C3 /* VoiceMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5598E92C49B4AFDEBBF9ABD /* VoiceMessageCell.swift */; };
 		D20CA357C52671211BAC322E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C46C5B588FB0FB03FC2E4F5 /* AppDelegate.swift */; };
+		DD67BA77CB031567ACB690F0 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA60A2B83B3AFDF7BC339CE9 /* ChatMessage.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,10 +26,11 @@
 		3E3E86A4018F9AD5C4752EC1 /* VoicePlaybackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePlaybackManager.swift; sourceTree = "<group>"; };
 		5DFBB50BD4826E4E6D73078D /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
 		723663033617A575C3423C2F /* VoiceChatViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceChatViewController.swift; sourceTree = "<group>"; };
-		775921C52F7CB53800CC4EEC /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
+		88CCD6C493430571B262638D /* TextMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextMessageCell.swift; sourceTree = "<group>"; };
+		99648386B953F022B1C8BB44 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
+		AA60A2B83B3AFDF7BC339CE9 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
 		BA566FC8E88C9CC98ACCBE19 /* RecordingOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverlayView.swift; sourceTree = "<group>"; };
 		BF347A545B7A1A236ADB531D /* VoiceCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCacheManager.swift; sourceTree = "<group>"; };
-		C1BAA2CF63224517C79A359F /* VoiceMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessage.swift; sourceTree = "<group>"; };
 		C90CCA3FBF8E477BD57BD727 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		C965731AD4227230ADCB2E2C /* VoiceIM.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceIM.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5598E92C49B4AFDEBBF9ABD /* VoiceMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageCell.swift; sourceTree = "<group>"; };
@@ -40,17 +43,18 @@
 			isa = PBXGroup;
 			children = (
 				1C46C5B588FB0FB03FC2E4F5 /* AppDelegate.swift */,
+				AA60A2B83B3AFDF7BC339CE9 /* ChatMessage.swift */,
 				FE150653DE97068F4C160094 /* Info.plist */,
+				99648386B953F022B1C8BB44 /* Launch Screen.storyboard */,
 				BA566FC8E88C9CC98ACCBE19 /* RecordingOverlayView.swift */,
 				C90CCA3FBF8E477BD57BD727 /* SceneDelegate.swift */,
+				88CCD6C493430571B262638D /* TextMessageCell.swift */,
 				5DFBB50BD4826E4E6D73078D /* ToastView.swift */,
 				BF347A545B7A1A236ADB531D /* VoiceCacheManager.swift */,
 				723663033617A575C3423C2F /* VoiceChatViewController.swift */,
-				C1BAA2CF63224517C79A359F /* VoiceMessage.swift */,
 				E5598E92C49B4AFDEBBF9ABD /* VoiceMessageCell.swift */,
 				3E3E86A4018F9AD5C4752EC1 /* VoicePlaybackManager.swift */,
 				F41F0A46908331582861C001 /* VoiceRecordManager.swift */,
-				775921C52F7CB53800CC4EEC /* Launch Screen.storyboard */,
 			);
 			path = VoiceIM;
 			sourceTree = "<group>";
@@ -79,6 +83,7 @@
 			buildConfigurationList = F50E0D53BE50132C1FD278A8 /* Build configuration list for PBXNativeTarget "VoiceIM" */;
 			buildPhases = (
 				5B9D310EC1BA9F51DECB8BB5 /* Sources */,
+				DAC59572A1C335AE544AAF02 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -124,18 +129,30 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		DAC59572A1C335AE544AAF02 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6A6495CF5DA4CE57A952589D /* Launch Screen.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		5B9D310EC1BA9F51DECB8BB5 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				D20CA357C52671211BAC322E /* AppDelegate.swift in Sources */,
+				DD67BA77CB031567ACB690F0 /* ChatMessage.swift in Sources */,
 				6226BE708901949D7EC1BA2B /* RecordingOverlayView.swift in Sources */,
 				073E52EDA48F57C817AEFF7C /* SceneDelegate.swift in Sources */,
+				27683E55BC9D786AE2E5B5E6 /* TextMessageCell.swift in Sources */,
 				46F7EEB4B5859BEE7DC49804 /* ToastView.swift in Sources */,
 				647F2F236D8CA0BC26CBE4DC /* VoiceCacheManager.swift in Sources */,
 				4C30FD63860DD642F53B78D8 /* VoiceChatViewController.swift in Sources */,
-				4E52062E69541EB4ED93D35B /* VoiceMessage.swift in Sources */,
 				A38F3DC2E33EA65CC7CC25C3 /* VoiceMessageCell.swift in Sources */,
 				74EFD26EA6213DE7246C266E /* VoicePlaybackManager.swift in Sources */,
 				725BE06B150B53B3ED8C688E /* VoiceRecordManager.swift in Sources */,

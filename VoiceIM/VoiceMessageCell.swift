@@ -2,9 +2,9 @@ import UIKit
 
 @MainActor
 protocol VoiceMessageCellDelegate: AnyObject {
-    func cellDidTapPlay(_ cell: VoiceMessageCell, message: VoiceMessage)
-    func cellDidSeek(_ cell: VoiceMessageCell, message: VoiceMessage, progress: Float)
-    func cellDidLongPress(_ cell: VoiceMessageCell, message: VoiceMessage)
+    func cellDidTapPlay(_ cell: VoiceMessageCell, message: ChatMessage)
+    func cellDidSeek(_ cell: VoiceMessageCell, message: ChatMessage, progress: Float)
+    func cellDidLongPress(_ cell: VoiceMessageCell, message: ChatMessage)
 }
 
 /// 语音消息气泡 Cell
@@ -13,7 +13,7 @@ final class VoiceMessageCell: UICollectionViewCell {
     static let reuseID = "VoiceMessageCell"
 
     weak var delegate: VoiceMessageCellDelegate?
-    private(set) var message: VoiceMessage?
+    private(set) var message: ChatMessage?
 
     // MARK: - 子视图
 
@@ -146,7 +146,7 @@ final class VoiceMessageCell: UICollectionViewCell {
     ///   - !isUnread && !unreadDot.isHidden（未读 → 已读）：播放淡出动画
     ///   - 其余情况（初次配置、已读 → 已读、cell 复用）：直接 isHidden 赋值，无动画
     ///   这样既保留了淡出效果，又避免了 cell 复用时错误触发动画。
-    func configure(with message: VoiceMessage, isPlaying: Bool, progress: Float, isUnread: Bool) {
+    func configure(with message: ChatMessage, isPlaying: Bool, progress: Float, isUnread: Bool) {
         self.message = message
         applyPlayState(isPlaying: isPlaying, progress: progress)
         if !isUnread && !unreadDot.isHidden {

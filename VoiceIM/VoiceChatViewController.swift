@@ -1,7 +1,7 @@
 import UIKit
 import AVFoundation
 
-/// IM 语音聊天页面
+/// IM 聊天页面（支持语音消息与文本消息）
 final class VoiceChatViewController: UIViewController {
 
     // MARK: - 常量
@@ -17,12 +17,15 @@ final class VoiceChatViewController: UIViewController {
 
     private var collectionView: UICollectionView!
     private let bottomBar    = UIView()
+    private let textField    = UITextField()
+    private let sendButton   = UIButton(type: .system)
     private let recordButton = UIButton(type: .system)
     private let overlayView  = RecordingOverlayView()
+    private var bottomBarBottomConstraint: NSLayoutConstraint!
 
     // MARK: - DiffableDataSource
 
-    private var dataSource: UICollectionViewDiffableDataSource<Section, VoiceMessage>!
+    private var dataSource: UICollectionViewDiffableDataSource<Section, ChatMessage>!
 
     // MARK: - 录音状态
 
@@ -49,7 +52,7 @@ final class VoiceChatViewController: UIViewController {
     //   可通过 insertItems + deleteItems 将新 item 写入 snapshot，
     //   届时 cell provider 直接从新 item 读取状态，messages 数组可移除。
 
-    private var messages: [VoiceMessage] = []
+    private var messages: [ChatMessage] = []
 
     // MARK: - 管理器（单例引用）
 
@@ -60,12 +63,30 @@ final class VoiceChatViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "语音消息"
+        title = "消息"
         view.backgroundColor = .systemBackground
         setupCollectionView()
         setupBottomBar()
         setupOverlay()
         setupPlaybackCallbacks()
+        setupKeyboardObservers()
+        insertMockMessages()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard !messages.isEmpty else { return }
+        // viewDidLoad 时 AutoLayout 尚未完成首次布局，cell 未渲染，scrollToItem 无效。
+        // viewDidAppear 时布局已稳定，animated: false 避免页面刚出现就触发滚动动画。
+        collectionView.scrollToItem(
+            at: IndexPath(item: messages.count - 1, section: 0),
+            at: .bottom, animated: false)
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        // 初始化时将 bottomBar 底部紧贴安全区域底部
+        bottomBarBottomConstraint.constant = -view.safeAreaInsets.bottom
     }
 
     // MARK: - UI 搭建
@@ -77,28 +98,41 @@ final class VoiceChatViewController: UIViewController {
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         collectionView.register(VoiceMessageCell.self,
                                 forCellWithReuseIdentifier: VoiceMessageCell.reuseID)
+        collectionView.register(TextMessageCell.self,
+                                forCellWithReuseIdentifier: TextMessageCell.reuseID)
         view.addSubview(collectionView)
 
         // DiffableDataSource
-        dataSource = UICollectionViewDiffableDataSource<Section, VoiceMessage>(
+        dataSource = UICollectionViewDiffableDataSource<Section, ChatMessage>(
             collectionView: collectionView
         ) { [weak self] cv, indexPath, message in
             guard let self else { return UICollectionViewCell() }
-            let cell = cv.dequeueReusableCell(
-                withReuseIdentifier: VoiceMessageCell.reuseID,
-                for: indexPath) as! VoiceMessageCell    // swiftlint:disable:this force_cast
-            // 从 messages 数组取最新状态，保证 isPlayed 始终准确
             let current = self.messages.first(where: { $0.id == message.id }) ?? message
-            cell.configure(with: current,
-                           isPlaying: self.player.isPlaying(id: current.id),
-                           progress: 0,
-                           isUnread: !current.isPlayed)
-            cell.delegate = self
-            return cell
+
+            switch current.kind {
+            case .voice:
+                let cell = cv.dequeueReusableCell(
+                    withReuseIdentifier: VoiceMessageCell.reuseID,
+                    for: indexPath) as! VoiceMessageCell    // swiftlint:disable:this force_cast
+                // 从 messages 数组取最新状态，保证 isPlayed 始终准确
+                cell.configure(with: current,
+                               isPlaying: self.player.isPlaying(id: current.id),
+                               progress: 0,
+                               isUnread: !current.isPlayed)
+                cell.delegate = self
+                return cell
+
+            case .text:
+                let cell = cv.dequeueReusableCell(
+                    withReuseIdentifier: TextMessageCell.reuseID,
+                    for: indexPath) as! TextMessageCell    // swiftlint:disable:this force_cast
+                cell.configure(with: current)
+                return cell
+            }
         }
 
         // 初始化空 snapshot
-        var snapshot = NSDiffableDataSourceSnapshot<Section, VoiceMessage>()
+        var snapshot = NSDiffableDataSourceSnapshot<Section, ChatMessage>()
         snapshot.appendSections([.main])
         dataSource.apply(snapshot, animatingDifferences: false)
     }
@@ -128,6 +162,8 @@ final class VoiceChatViewController: UIViewController {
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(bottomBar)
 
+        bottomBarBottomConstraint = bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -136,25 +172,48 @@ final class VoiceChatViewController: UIViewController {
 
             bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bottomBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-            bottomBar.heightAnchor.constraint(equalToConstant: 72),
+            bottomBarBottomConstraint,
+            bottomBar.heightAnchor.constraint(equalToConstant: 56),
         ])
 
-        recordButton.setTitle("按住说话", for: .normal)
-        recordButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
-        recordButton.backgroundColor = .systemBackground
-        recordButton.setTitleColor(.label, for: .normal)
-        recordButton.layer.cornerRadius = 8
-        recordButton.layer.borderWidth = 1
-        recordButton.layer.borderColor = UIColor.separator.cgColor
+        // 文字输入框
+        textField.placeholder = "输入消息"
+        textField.borderStyle = .roundedRect
+        textField.returnKeyType = .send
+        textField.delegate = self
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        textField.addTarget(self, action: #selector(textFieldChanged), for: .editingChanged)
+        bottomBar.addSubview(textField)
+
+        // 发送按钮（初始禁用）
+        sendButton.setTitle("发送", for: .normal)
+        sendButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
+        sendButton.isEnabled = false
+        sendButton.alpha = 0.4
+        sendButton.translatesAutoresizingMaskIntoConstraints = false
+        sendButton.addTarget(self, action: #selector(sendTextTapped), for: .touchUpInside)
+        bottomBar.addSubview(sendButton)
+
+        // 录音按钮（麦克风图标）
+        let micImage = UIImage(systemName: "mic.fill")
+        recordButton.setImage(micImage, for: .normal)
+        recordButton.tintColor = .systemBlue
         recordButton.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.addSubview(recordButton)
 
         NSLayoutConstraint.activate([
-            recordButton.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 20),
-            recordButton.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -20),
+            textField.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
+            textField.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
+            textField.heightAnchor.constraint(equalToConstant: 36),
+
+            sendButton.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 8),
+            sendButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
+
+            recordButton.leadingAnchor.constraint(equalTo: sendButton.trailingAnchor, constant: 8),
+            recordButton.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -12),
             recordButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
-            recordButton.heightAnchor.constraint(equalToConstant: 44),
+            recordButton.widthAnchor.constraint(equalToConstant: 32),
+            recordButton.heightAnchor.constraint(equalToConstant: 32),
         ])
 
         let lp = UILongPressGestureRecognizer(target: self,
@@ -183,6 +242,26 @@ final class VoiceChatViewController: UIViewController {
         player.onStop = { [weak self] id in
             self?.cellForMessage(id: id)?.applyPlayState(isPlaying: false, progress: 0)
         }
+    }
+
+    // MARK: - 文本发送
+
+    @objc private func textFieldChanged() {
+        updateSendButton()
+    }
+
+    @objc private func sendTextTapped() {
+        let content = textField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard !content.isEmpty else { return }
+        textField.text = nil
+        updateSendButton()
+        appendMessage(.text(content))
+    }
+
+    private func updateSendButton() {
+        let hasText = !(textField.text?.trimmingCharacters(in: .whitespaces).isEmpty ?? true)
+        sendButton.isEnabled = hasText
+        sendButton.alpha = hasText ? 1 : 0.4
     }
 
     // MARK: - 长按手势处理
@@ -241,7 +320,7 @@ final class VoiceChatViewController: UIViewController {
                 self.recordState = .recording
                 self.elapsedSeconds = 0
                 self.showOverlay()
-                self.updateButtonAppearance()
+                self.updateRecordButton()
                 self.startCountdown()
             } catch {
                 ToastView.show("录音启动失败", in: self.view)
@@ -278,7 +357,7 @@ final class VoiceChatViewController: UIViewController {
             ToastView.show("说话时间太短", in: view)
             return
         }
-        appendMessage(VoiceMessage(localURL: url, duration: actualDuration))
+        appendMessage(.voice(localURL: url, duration: actualDuration))
         resetToIdle()
     }
 
@@ -291,24 +370,27 @@ final class VoiceChatViewController: UIViewController {
     private func enterCancelReady() {
         recordState = .cancelReady
         overlayView.setState(.cancelReady)
-        updateButtonAppearance()
+        updateRecordButton()
     }
 
     private func enterNormalRecording() {
         recordState = .recording
         overlayView.setState(.recording)
-        updateButtonAppearance()
+        updateRecordButton()
     }
 
     private func resetToIdle() {
         recordState = .idle
         hideOverlay()
-        updateButtonAppearance()
+        updateRecordButton()
+        textField.isEnabled = true
     }
 
     // MARK: - UI 更新
 
     private func showOverlay() {
+        // 录音期间禁用文字输入
+        textField.isEnabled = false
         overlayView.setState(.recording)
         overlayView.updateSeconds(0)
         overlayView.isHidden = false
@@ -324,26 +406,20 @@ final class VoiceChatViewController: UIViewController {
         }
     }
 
-    private func updateButtonAppearance() {
+    private func updateRecordButton() {
         switch recordState {
         case .idle:
-            recordButton.setTitle("按住说话", for: .normal)
-            recordButton.backgroundColor = .systemBackground
-            recordButton.layer.borderColor = UIColor.separator.cgColor
+            recordButton.tintColor = .systemBlue
         case .recording:
-            recordButton.setTitle("松开 发送", for: .normal)
-            recordButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.08)
-            recordButton.layer.borderColor = UIColor.systemBlue.cgColor
+            recordButton.tintColor = .systemRed
         case .cancelReady:
-            recordButton.setTitle("松开 取消", for: .normal)
-            recordButton.backgroundColor = UIColor.systemRed.withAlphaComponent(0.08)
-            recordButton.layer.borderColor = UIColor.systemRed.cgColor
+            recordButton.tintColor = .systemGray
         }
     }
 
     // MARK: - 消息列表
 
-    private func appendMessage(_ message: VoiceMessage) {
+    private func appendMessage(_ message: ChatMessage) {
         let shouldScroll = isNearBottom
 
         messages.append(message)
@@ -363,7 +439,7 @@ final class VoiceChatViewController: UIViewController {
 
     /// 将指定消息标记为已播放，触发 cell 红点消失。
     ///
-    /// # isPlayed 更新策略对比（完整分析见 VoiceMessage.swift Hashable 设计说明）
+    /// # isPlayed 更新策略对比（完整分析见 ChatMessage.swift Hashable 设计说明）
     ///
     /// ## 方案 A（未采用）：仅 apply 新 snapshot，不调用 reloadItems
     ///   由于 Hashable 仅基于 id，新旧 snapshot 对 DiffableDataSource 而言没有差异，
@@ -444,7 +520,7 @@ final class VoiceChatViewController: UIViewController {
 
     // MARK: - 播放逻辑
 
-    private func handlePlayTap(message: VoiceMessage) {
+    private func handlePlayTap(message: ChatMessage) {
         guard recordState == .idle else { return }
         if player.isPlaying(id: message.id) {
             player.stopCurrent()
@@ -461,8 +537,8 @@ final class VoiceChatViewController: UIViewController {
         }
     }
 
-    private func resolveURL(for message: VoiceMessage) async throws -> URL {
-        if let local = message.localURL  { return local }
+    private func resolveURL(for message: ChatMessage) async throws -> URL {
+        if let local = message.localURL   { return local }
         if let remote = message.remoteURL { return try await VoiceCacheManager.shared.resolve(remote) }
         throw URLError(.fileDoesNotExist)
     }
@@ -479,21 +555,91 @@ final class VoiceChatViewController: UIViewController {
 
 extension VoiceChatViewController: VoiceMessageCellDelegate {
 
-    func cellDidTapPlay(_ cell: VoiceMessageCell, message: VoiceMessage) {
+    func cellDidTapPlay(_ cell: VoiceMessageCell, message: ChatMessage) {
         handlePlayTap(message: message)
     }
 
-    func cellDidSeek(_ cell: VoiceMessageCell, message: VoiceMessage, progress: Float) {
+    func cellDidSeek(_ cell: VoiceMessageCell, message: ChatMessage, progress: Float) {
         guard player.isPlaying(id: message.id) else { return }
         player.seek(to: progress)
     }
 
-    func cellDidLongPress(_ cell: VoiceMessageCell, message: VoiceMessage) {
+    func cellDidLongPress(_ cell: VoiceMessageCell, message: ChatMessage) {
         let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
         sheet.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
             self?.deleteMessage(id: message.id)
         })
         sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
         present(sheet, animated: true)
+    }
+}
+
+// MARK: - UITextFieldDelegate
+
+extension VoiceChatViewController: UITextFieldDelegate {
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        sendTextTapped()
+        return true
+    }
+}
+
+// MARK: - Mock 数据
+
+extension VoiceChatViewController {
+
+    /// 预填 20 条文本消息，用于开发阶段验证列表滚动、键盘遮挡等交互。
+    /// 上线前删除此方法及 viewDidLoad 中的调用即可。
+    private func insertMockMessages() {
+        let texts = [
+            "你好！", "最近怎么样？", "我在学习 Swift 并发模型", "感觉 actor 挺好用的",
+            "对，隔离状态很清晰", "你用 SwiftUI 还是 UIKit？", "目前还是 UIKit",
+            "等 iOS 15 最低版本要求普及再迁移", "有道理", "今天天气不错",
+            "出去走走？", "下午有个会", "那改天吧", "好的", "记得发语音消息测试一下",
+            "哈哈好的", "长按录音按钮", "松手发送", "上滑取消", "收到！"
+        ]
+        texts.forEach { appendMessage(.text($0)) }
+    }
+}
+
+// MARK: - 键盘处理
+
+extension VoiceChatViewController {
+
+    private func setupKeyboardObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil)
+    }
+
+    @objc private func keyboardWillChangeFrame(_ notification: Notification) {
+        guard
+            let info = notification.userInfo,
+            let endFrame = (info[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue,
+            let duration = (info[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue,
+            let curveRaw = (info[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue
+        else { return }
+
+        // 键盘完全收起时 endFrame.minY == view 底部
+        let keyboardHeight = max(view.bounds.maxY - endFrame.minY, 0)
+        // 键盘遮挡高度 = 键盘高度 - 安全区域底部（底栏已超出安全区，不能重复计算）
+        let offset = keyboardHeight > 0
+            ? -keyboardHeight
+            : -view.safeAreaInsets.bottom
+
+        let shouldScroll = isNearBottom
+        let options = UIView.AnimationOptions(rawValue: curveRaw << 16)
+        UIView.animate(withDuration: duration, delay: 0, options: options) {
+            self.bottomBarBottomConstraint.constant = offset
+            self.view.layoutIfNeeded()
+        } completion: { _ in
+            if shouldScroll, !self.messages.isEmpty {
+                self.collectionView.scrollToItem(
+                    at: IndexPath(item: self.messages.count - 1, section: 0),
+                    at: .bottom, animated: true)
+            }
+        }
     }
 }
