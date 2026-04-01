@@ -33,7 +33,18 @@ final class VoiceChatViewController: UIViewController {
     private var countdownTimer: Timer?
     private var elapsedSeconds = 0
 
-    // MARK: - 消息数据（可变，isPlayed 在此更新，DiffableDataSource 从这里读取最新状态）
+    // MARK: - 消息数据
+    //
+    // 独立维护 messages 数组的原因：
+    //   DiffableDataSource 内部 snapshot 存储的是插入时的 item 副本，
+    //   后续对 isPlayed 的修改不会同步到 snapshot 内的 item。
+    //   使用 reloadItems（方案 B）触发 cell provider 重新执行时，
+    //   cell provider 收到的参数仍是 snapshot 内的旧 item（isPlayed: false），
+    //   因此必须有 messages 数组作为可变状态的真实来源，供 cell provider 查询。
+    //
+    //   升级到 iOS 15 并改用 reconfigureItems（方案 C）后，
+    //   可通过 insertItems + deleteItems 将新 item 写入 snapshot，
+    //   届时 cell provider 直接从新 item 读取状态，messages 数组可移除。
 
     private var messages: [VoiceMessage] = []
 
@@ -340,28 +351,40 @@ final class VoiceChatViewController: UIViewController {
         }
     }
 
-    /// 将指定消息标记为已播放，并同步更新 cell 红点
+    /// 将指定消息标记为已播放，触发 cell 红点消失。
     ///
-    /// isPlayed 更新策略（对应 VoiceMessage 中的 Hashable 设计说明）：
+    /// # isPlayed 更新策略对比（完整分析见 VoiceMessage.swift Hashable 设计说明）
     ///
-    /// - 方案 A（未采用）：将更新后的 item 写入新 snapshot 并 apply。
-    ///   由于 Hashable 仅基于 id，DiffableDataSource 无法感知 isPlayed 变化，
-    ///   即使 apply 新 snapshot，cell provider 拿到的仍是 snapshot 内旧 item，
-    ///   cell 不会刷新。若改为 id+isPlayed 的 Hashable，则会触发 delete+insert 闪烁。
+    /// ## 方案 A（未采用）：仅 apply 新 snapshot，不调用 reloadItems
+    ///   由于 Hashable 仅基于 id，新旧 snapshot 对 DiffableDataSource 而言没有差异，
+    ///   apply 不会触发任何 cell 更新，红点不会消失。
+    ///   若将 Hashable 改为基于 id + isPlayed 以触发差异感知：
+    ///   → DiffableDataSource 认定旧 item 被删除、新 item 被插入，产生闪烁动画。
     ///
-    /// - 方案 B（当前采用）：在 messages 数组中直接修改 isPlayed，
-    ///   不触发 snapshot diff，再通过 cellForMessage 直接调用 cell.markAsRead()。
-    ///   cell provider 从 messages 数组查最新状态，保证复用时 isPlayed 也正确。
+    /// ## 方案 B（当前采用，iOS 13+）：messages 数组 + snapshot.reloadItems
+    ///   步骤：
+    ///     1. messages[idx].isPlayed = true（更新可变状态）
+    ///     2. snapshot.reloadItems([messages[idx]])（标记该 item 需重新配置）
+    ///     3. dataSource.apply(snapshot, animatingDifferences: false)
+    ///     4. cell provider 重新执行，从 messages 数组读到 isPlayed: true
+    ///     5. configure(isUnread: false) → cell 内部检测到状态从未读变已读，触发淡出动画
+    ///   注意事项：
+    ///     - reloadItems 只标记重载，不修改 snapshot 内存储的 item 本身
+    ///     - cell provider 收到的参数仍是 snapshot 内的旧 item（isPlayed: false）
+    ///     - 必须从 messages 数组查询最新状态，messages 数组不可省略
+    ///     - animatingDifferences: false 避免 reloadItems 触发系统默认的 crossfade 动画，
+    ///       红点淡出动画由 cell 内部的 configure 方法负责
     ///
-    /// - 方案 C（iOS 15+ 可升级）：用 snapshot.reconfigureItems 替代直接操作 cell。
-    ///   将更新后的 item 替换进 snapshot（insertItems(afterItem:) + deleteItems），
-    ///   调用 snapshot.reconfigureItems([newItem]) 后 apply，
-    ///   DiffableDataSource 原地重新调用 cell provider，cell 从新 item 读取 isPlayed，
-    ///   无需 messages 数组，也无需直接调用 cell.markAsRead()，数据驱动更彻底。
+    /// ## 方案 C（iOS 15+ 可升级）：insertItems + deleteItems + reconfigureItems
+    ///   步骤：
+    ///     1. 用 insertItems(afterItem:) + deleteItems 将新 item 写入 snapshot（替换旧值）
+    ///     2. reconfigureItems([newItem]) 标记原地重配（非 delete/insert，无闪烁）
+    ///     3. apply 后 cell provider 直接收到新 item（isPlayed: true），无需查外部数组
+    ///   优势：snapshot 成为唯一数据源，messages 数组可完全移除。
     ///   升级时只需重写本方法，其余代码不变：
     ///
     ///   ```swift
-    ///   // iOS 15+ 实现示例
+    ///   // iOS 15+ 实现示例（messages 数组可随之移除）
     ///   var snapshot = dataSource.snapshot()
     ///   guard let old = snapshot.itemIdentifiers(inSection: .main)
     ///                           .first(where: { $0.id == id }), !old.isPlayed else { return }
@@ -376,7 +399,9 @@ final class VoiceChatViewController: UIViewController {
         guard let idx = messages.firstIndex(where: { $0.id == id }),
               !messages[idx].isPlayed else { return }
         messages[idx].isPlayed = true
-        cellForMessage(id: id)?.markAsRead()
+        var snapshot = dataSource.snapshot()
+        snapshot.reloadItems([messages[idx]])
+        dataSource.apply(snapshot, animatingDifferences: false)
     }
 
     /// 判断当前是否在底部附近（阈值 60pt）

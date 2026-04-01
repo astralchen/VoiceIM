@@ -126,20 +126,34 @@ final class VoiceMessageCell: UICollectionViewCell {
 
     // MARK: - 配置
 
+    /// cell 配置入口，由 DiffableDataSource 的 cell provider 或 reloadItems 触发时调用。
+    ///
+    /// # 红点（unreadDot）更新策略
+    ///
+    /// ## 早期方案（已废弃）：ViewController 直接调用 cell.markAsRead()
+    ///   ViewController 在 markAsPlayed 中直接拿到 cell 引用并调用 markAsRead()，
+    ///   触发淡出动画。问题：绕过了数据驱动原则，ViewController 直接操作 cell 内部视图。
+    ///
+    /// ## 当前方案：动画逻辑内化到 configure，由状态变化驱动
+    ///   markAsPlayed 通过 reloadItems 触发 configure 重新执行，
+    ///   configure 根据前后状态决定是否播放动画：
+    ///   - !isUnread && !unreadDot.isHidden（未读 → 已读）：播放淡出动画
+    ///   - 其余情况（初次配置、已读 → 已读、cell 复用）：直接 isHidden 赋值，无动画
+    ///   这样既保留了淡出效果，又避免了 cell 复用时错误触发动画。
     func configure(with message: VoiceMessage, isPlaying: Bool, progress: Float, isUnread: Bool) {
         self.message = message
         applyPlayState(isPlaying: isPlaying, progress: progress)
-        unreadDot.isHidden = !isUnread
-    }
-
-    /// 标记为已读（播放时调用）
-    func markAsRead() {
-        guard !unreadDot.isHidden else { return }
-        UIView.animate(withDuration: 0.2) {
-            self.unreadDot.alpha = 0
-        } completion: { _ in
-            self.unreadDot.isHidden = true
-            self.unreadDot.alpha = 1
+        if !isUnread && !unreadDot.isHidden {
+            // 未读 → 已读：淡出动画
+            UIView.animate(withDuration: 0.2) {
+                self.unreadDot.alpha = 0
+            } completion: { _ in
+                self.unreadDot.isHidden = true
+                self.unreadDot.alpha = 1
+            }
+        } else {
+            // 初次配置 / 复用 / 已读状态：直接显隐，不触发动画
+            unreadDot.isHidden = !isUnread
         }
     }
 

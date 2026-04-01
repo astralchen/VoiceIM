@@ -5,25 +5,49 @@ struct VoiceMessage: Sendable, Hashable {
 
     // MARK: - Hashable 设计说明
     //
-    // 【方案 A - 未采用】Hashable 基于 id + isPlayed
-    //   当 isPlayed 从 false 变为 true 时，新旧 item 的 hash/equal 不同，
-    //   DiffableDataSource 会将其视为「删除旧 item + 插入新 item」，
-    //   导致 cell 产生 delete/insert 动画，视觉上出现闪烁。
-    //   若用 animatingDifferences: false 规避闪烁，则整个列表会触发 reloadData，代价较高。
+    // VoiceMessage 含有可变字段 isPlayed，而 NSDiffableDataSourceSnapshot 要求
+    // ItemIdentifierType 符合 Hashable，hash/equal 的实现方式决定了"状态更新"如何触达 cell。
+    // 以下三种方案经过对比，当前采用方案 B。
     //
-    // 【方案 B - 当前采用】Hashable 仅基于 id
-    //   isPlayed 变化不影响 item 的唯一性，DiffableDataSource 不会产生额外的删除/插入。
-    //   更新已播放状态时，在 ViewController 的 messages 数组中修改 isPlayed，
-    //   再直接刷新对应 cell（markAsRead），实现原地更新、无闪烁。
+    // ┌─────────────────────────────────────────────────────────────────────┐
+    // │ 方案 A（未采用）：Hashable 基于 id + isPlayed                        │
+    // ├─────────────────────────────────────────────────────────────────────┤
+    // │ isPlayed 变化 → 新旧 item hash/equal 不同                            │
+    // │ → DiffableDataSource 判定为「删除旧 item + 插入新 item」              │
+    // │ → cell 产生 delete/insert 动画，视觉闪烁                             │
+    // │ 若用 animatingDifferences: false 规避闪烁：                          │
+    // │ → 整个列表触发类似 reloadData 的全量重绘，性能代价高                  │
+    // └─────────────────────────────────────────────────────────────────────┘
     //
-    // 【方案 C - iOS 15+ 可升级】Hashable 仅基于 id + snapshot.reconfigureItems
-    //   reconfigureItems 是 iOS 15 引入的 API，专为"item 内容变化但 identity 不变"的场景设计。
-    //   流程：将 isPlayed 更新后的新 item 替换进 snapshot（insertAfter + delete），
-    //   调用 snapshot.reconfigureItems([newItem]) 再 apply，
-    //   DiffableDataSource 原地调用 cell provider，cell 从新 item 读 isPlayed，无 delete/insert 动画。
-    //   优势：snapshot 成为唯一数据源，可移除 ViewController 中的 messages 数组，
-    //         也无需直接操作 cell（markAsRead），数据驱动更彻底。
-    //   升级时只需改动 markAsPlayed 方法，其余逻辑不变。
+    // ┌─────────────────────────────────────────────────────────────────────┐
+    // │ 方案 B（当前采用，iOS 13+）：Hashable 仅基于 id                       │
+    // │                              + snapshot.reloadItems                  │
+    // ├─────────────────────────────────────────────────────────────────────┤
+    // │ isPlayed 变化不影响 item 唯一性，不触发 delete/insert                 │
+    // │ 更新流程：                                                            │
+    // │   1. 在 ViewController.messages 数组中修改 isPlayed                  │
+    // │   2. 调用 snapshot.reloadItems([updatedItem])                        │
+    // │   3. apply 后 DiffableDataSource 重新调用 cell provider               │
+    // │   4. cell provider 从 messages 数组查最新 isPlayed → cell 原地更新    │
+    // │ 局限：reloadItems 只标记重载，不更新 snapshot 内存储的 item 本身，     │
+    // │       snapshot 内的 item 始终是插入时的旧值（isPlayed: false），       │
+    // │       cell provider 参数也是旧值，必须借助 messages 数组提供最新状态。 │
+    // │       因此 messages 数组无法省略，存在数据双份的问题。                 │
+    // └─────────────────────────────────────────────────────────────────────┘
+    //
+    // ┌─────────────────────────────────────────────────────────────────────┐
+    // │ 方案 C（iOS 15+ 可升级）：Hashable 仅基于 id                          │
+    // │                           + snapshot.reconfigureItems                │
+    // ├─────────────────────────────────────────────────────────────────────┤
+    // │ reconfigureItems 是 iOS 15 专为"内容变化、identity 不变"设计的 API。  │
+    // │ 更新流程：                                                            │
+    // │   1. insertItems(afterItem:) + deleteItems 将新 item 替换进 snapshot  │
+    // │   2. reconfigureItems([newItem]) 标记原地重配                         │
+    // │   3. apply 后 cell provider 收到新 item，直接读 isPlayed              │
+    // │ 优势：snapshot 成为唯一数据源，messages 数组可完全移除，              │
+    // │       cell provider 无需查外部数组，数据驱动更彻底。                  │
+    // │ 升级时只需改动 VoiceChatViewController.markAsPlayed，其余代码不变。   │
+    // └─────────────────────────────────────────────────────────────────────┘
     static func == (lhs: VoiceMessage, rhs: VoiceMessage) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
     let id: UUID
