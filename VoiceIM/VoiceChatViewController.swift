@@ -32,6 +32,9 @@ final class VoiceChatViewController: UIViewController {
     private var touchStartY: CGFloat = 0
     private var countdownTimer: Timer?
     private var elapsedSeconds = 0
+    /// 长按手势是否仍处于激活状态（.began → true，.ended/.cancelled/.failed → false）
+    /// 用于检测：权限弹窗期间用户已松手，授权回调返回后不应启动录音
+    private var isGestureActive = false
 
     // MARK: - 消息数据
     //
@@ -188,6 +191,7 @@ final class VoiceChatViewController: UIViewController {
         switch gesture.state {
 
         case .began:
+            isGestureActive = true
             touchStartY = gesture.location(in: view).y
             beginRecording()
 
@@ -201,6 +205,7 @@ final class VoiceChatViewController: UIViewController {
             }
 
         case .ended:
+            isGestureActive = false
             switch recordState {
             case .idle:        break
             case .recording:   finishAndSend()
@@ -208,6 +213,7 @@ final class VoiceChatViewController: UIViewController {
             }
 
         case .cancelled, .failed:
+            isGestureActive = false
             cancelAndDiscard()
 
         default:
@@ -226,6 +232,10 @@ final class VoiceChatViewController: UIViewController {
                 ToastView.show("请在设置中开启麦克风权限", in: self.view)
                 return
             }
+            // 权限弹窗期间用户已松手，不启动录音
+            guard self.isGestureActive else { return }
+            // 录音开始前停止当前播放，避免录音与播放同时进行
+            self.player.stopCurrent()
             do {
                 _ = try self.recorder.startRecording()
                 self.recordState = .recording
@@ -404,6 +414,24 @@ final class VoiceChatViewController: UIViewController {
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 
+    private func deleteMessage(id: UUID) {
+        // 正在播放该条消息时先停止，避免播放器持有悬空 URL
+        if player.isPlaying(id: id) { player.stopCurrent() }
+
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        let message = messages[idx]
+        messages.remove(at: idx)
+
+        // 本地录制的临时文件随消息一同删除
+        if let url = message.localURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+
+        var snapshot = dataSource.snapshot()
+        snapshot.deleteItems([message])
+        dataSource.apply(snapshot, animatingDifferences: true)
+    }
+
     /// 判断当前是否在底部附近（阈值 60pt）
     private var isNearBottom: Bool {
         let cv = collectionView!
@@ -417,6 +445,7 @@ final class VoiceChatViewController: UIViewController {
     // MARK: - 播放逻辑
 
     private func handlePlayTap(message: VoiceMessage) {
+        guard recordState == .idle else { return }
         if player.isPlaying(id: message.id) {
             player.stopCurrent()
             return
@@ -457,5 +486,14 @@ extension VoiceChatViewController: VoiceMessageCellDelegate {
     func cellDidSeek(_ cell: VoiceMessageCell, message: VoiceMessage, progress: Float) {
         guard player.isPlaying(id: message.id) else { return }
         player.seek(to: progress)
+    }
+
+    func cellDidLongPress(_ cell: VoiceMessageCell, message: VoiceMessage) {
+        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
+            self?.deleteMessage(id: message.id)
+        })
+        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
+        present(sheet, animated: true)
     }
 }

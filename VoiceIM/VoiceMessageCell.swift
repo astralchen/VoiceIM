@@ -4,6 +4,7 @@ import UIKit
 protocol VoiceMessageCellDelegate: AnyObject {
     func cellDidTapPlay(_ cell: VoiceMessageCell, message: VoiceMessage)
     func cellDidSeek(_ cell: VoiceMessageCell, message: VoiceMessage, progress: Float)
+    func cellDidLongPress(_ cell: VoiceMessageCell, message: VoiceMessage)
 }
 
 /// 语音消息气泡 Cell
@@ -90,6 +91,11 @@ final class VoiceMessageCell: UICollectionViewCell {
         // 手指抬起（无论是否在 slider 内）：执行 seek
         seekSlider.addTarget(self, action: #selector(sliderTouchUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
         bubble.addSubview(seekSlider)
+
+        // 长按气泡触发删除菜单
+        let lp = UILongPressGestureRecognizer(target: self, action: #selector(bubbleLongPressed))
+        lp.minimumPressDuration = 0.5
+        bubble.addGestureRecognizer(lp)
 
         NSLayoutConstraint.activate([
             // 气泡靠左，最大宽度 65%
@@ -214,6 +220,11 @@ final class VoiceMessageCell: UICollectionViewCell {
     @objc private func playTapped() {
         guard let msg = message else { return }
         delegate?.cellDidTapPlay(self, message: msg)
+    }
+
+    @objc private func bubbleLongPressed(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began, let msg = message else { return }
+        delegate?.cellDidLongPress(self, message: msg)
     }
 
     // MARK: - 私有工具
