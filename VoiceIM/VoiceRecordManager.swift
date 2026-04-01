@@ -14,7 +14,12 @@ final class VoiceRecordManager: NSObject {
 
     // MARK: - 权限
 
-    func requestPermission() async -> Bool {
+    // nonisolated：requestRecordPermission 的回调由 TCC 私有串行队列触发，
+    // 若方法保持 @MainActor 隔离，Swift 6 会在回调线程插入主 Actor 隔离检查
+    // (_swift_task_checkIsolatedSwift)，导致 _dispatch_assert_queue_fail 崩溃。
+    // 该方法仅桥接回调 API，不访问任何 actor 隔离状态，声明为 nonisolated 即可；
+    // 调用方 await 后会自动回到其所在 actor（主线程），行为不变。
+    nonisolated func requestPermission() async -> Bool {
         await withCheckedContinuation { continuation in
             AVAudioSession.sharedInstance().requestRecordPermission { granted in
                 continuation.resume(returning: granted)

@@ -1,3 +1,6 @@
+# VoiceIM
+# IM 语音消息功能：录制、发送、播放、进度控制、未读提醒
+# Swift 6.0 · UIKit · iOS 13.0+
 name: VoiceIM
 
 options:
