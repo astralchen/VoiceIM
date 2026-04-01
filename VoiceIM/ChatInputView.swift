@@ -46,6 +46,13 @@ final class ChatInputView: UIView {
     /// textView 高度约束，由 textViewDidChange 动态更新，上限 120pt（约 5 行）；
     /// 注意：必须持有强引用，否则从 AutoLayout 引擎取出后为 nil
     private var textViewHeightConstraint: NSLayoutConstraint!
+    /// textView 的 top/bottom 约束，语音模式下停用以避免撑开 ChatInputView
+    private var textViewTopConstraint: NSLayoutConstraint!
+    private var textViewBottomConstraint: NSLayoutConstraint!
+    /// voiceInputButton 的 top/bottom 约束，文字模式下停用
+    private var voiceTopConstraint: NSLayoutConstraint!
+    private var voiceBottomConstraint: NSLayoutConstraint!
+    private var voiceHeightConstraint: NSLayoutConstraint!
     /// 上次 layout 时 textView 的宽度，用于检测旋转引起的宽度变化
     private var lastLayoutWidth: CGFloat = 0
 
@@ -145,11 +152,13 @@ final class ChatInputView: UIView {
         // textView 的 top/bottom 同时约束到 ChatInputView，负责撑开整体高度；
         // textViewHeightConstraint 控制单行到多行的增长，与 top/bottom 共同作用
         textViewHeightConstraint = textView.heightAnchor.constraint(equalToConstant: 36)
+        textViewTopConstraint = textView.topAnchor.constraint(equalTo: topAnchor, constant: 10)
+        textViewBottomConstraint = textView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10)
 
         NSLayoutConstraint.activate([
             textView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            textView.topAnchor.constraint(equalTo: topAnchor, constant: 10),
-            textView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            textViewTopConstraint,
+            textViewBottomConstraint,
             textViewHeightConstraint,
 
             // placeholder 与 textView 文字起点对齐（inset + textContainer 偏移）
@@ -177,12 +186,14 @@ final class ChatInputView: UIView {
         voiceInputButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(voiceInputButton)
 
+        voiceTopConstraint = voiceInputButton.topAnchor.constraint(equalTo: topAnchor, constant: 10)
+        voiceBottomConstraint = voiceInputButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10)
+        voiceHeightConstraint = voiceInputButton.heightAnchor.constraint(equalToConstant: 36)
+
+        // 语音模式的 top/bottom/height 初始不激活，切换时再启用
         NSLayoutConstraint.activate([
             voiceInputButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             voiceInputButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -8),
-            voiceInputButton.topAnchor.constraint(equalTo: topAnchor, constant: 10),
-            voiceInputButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
-            voiceInputButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 36),
         ])
 
         // 长按手势绑定在 voiceInputButton；
@@ -198,21 +209,41 @@ final class ChatInputView: UIView {
     @objc private func toggleInputMode() {
         switch inputMode {
         case .text:
-            // 文字 → 语音：收起键盘，隐藏文字控件，显示"按住说话"
+            // 文字 → 语音：收起键盘，停用 textView 约束，启用 voiceInputButton 约束
             textView.resignFirstResponder()
             inputMode = .voice
             textView.isHidden = true
             sendButton.isHidden = true
+            textViewTopConstraint.isActive = false
+            textViewBottomConstraint.isActive = false
+            voiceTopConstraint.isActive = true
+            voiceBottomConstraint.isActive = true
+            voiceHeightConstraint.isActive = true
             voiceInputButton.isHidden = false
             toggleButton.setImage(UIImage(systemName: "keyboard"), for: .normal)
+            UIView.animate(withDuration: 0.15) {
+                self.layoutIfNeeded()
+            } completion: { _ in
+                self.onHeightChange?()
+            }
         case .voice:
-            // 语音 → 文字：显示文字控件，隐藏"按住说话"，聚焦输入框
+            // 语音 → 文字：停用 voiceInputButton 约束，启用 textView 约束
             inputMode = .text
             voiceInputButton.isHidden = true
+            voiceTopConstraint.isActive = false
+            voiceBottomConstraint.isActive = false
+            voiceHeightConstraint.isActive = false
+            textViewTopConstraint.isActive = true
+            textViewBottomConstraint.isActive = true
             textView.isHidden = false
             sendButton.isHidden = false
             toggleButton.setImage(UIImage(systemName: "mic.fill"), for: .normal)
             textView.becomeFirstResponder()
+            UIView.animate(withDuration: 0.15) {
+                self.layoutIfNeeded()
+            } completion: { _ in
+                self.onHeightChange?()
+            }
         }
     }
 
