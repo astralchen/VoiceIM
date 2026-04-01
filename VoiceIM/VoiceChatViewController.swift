@@ -86,6 +86,21 @@ final class VoiceChatViewController: UIViewController {
         inputViewBottomConstraint.constant = -view.safeAreaInsets.bottom
     }
 
+    override func viewWillTransition(to size: CGSize,
+                                     with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        // 旋转时 collectionView 宽度变化，cell 高度重新计算，内容总高度随之改变；
+        // 即使 ChatInputView 高度不变，底部消息也可能因滚动位置未更新而被遮挡。
+        // 在旋转动画结束后滚动到最后一条消息，保证内容始终可见。
+        guard !messages.isEmpty else { return }
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            guard let self else { return }
+            collectionView.scrollToItem(
+                at: IndexPath(item: messages.count - 1, section: 0),
+                at: .bottom, animated: false)
+        }
+    }
+
     // MARK: - UI 搭建
 
     private func setupCollectionView() {

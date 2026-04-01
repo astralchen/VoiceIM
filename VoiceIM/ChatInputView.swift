@@ -58,6 +58,33 @@ final class ChatInputView: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    // MARK: - 旋转适配
+    //
+    // 旋转时 textView 宽度变化，同样数量的文字在新宽度下所需行数不同，
+    // textViewHeightConstraint 的旧值不再准确，需重新计算。
+    // 使用 layoutSubviews + lastLayoutWidth 检测宽度变化，避免每次 layout 都重算。
+    // 不加动画：旋转本身已有系统动画上下文，强加动画反而会造成跳变。
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let newWidth = textView.bounds.width
+        guard newWidth > 0, abs(newWidth - lastLayoutWidth) > 1 else { return }
+        lastLayoutWidth = newWidth
+        recalculateTextViewHeight()
+    }
+
+    private func recalculateTextViewHeight() {
+        let maxHeight: CGFloat = 120
+        let fitSize = textView.sizeThatFits(CGSize(width: textView.bounds.width, height: .infinity))
+        let newHeight = min(fitSize.height, maxHeight)
+        textView.isScrollEnabled = fitSize.height > maxHeight
+        guard textViewHeightConstraint.constant != newHeight else { return }
+        textViewHeightConstraint.constant = newHeight
+        // layoutIfNeeded 在旋转动画上下文内执行，高度变化会随旋转一起动画
+        layoutIfNeeded()
+        onHeightChange?()
+    }
+
     // MARK: - UI 搭建
 
     private func setupUI() {
