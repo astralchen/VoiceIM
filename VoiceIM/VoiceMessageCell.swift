@@ -1,0 +1,214 @@
+import UIKit
+
+@MainActor
+protocol VoiceMessageCellDelegate: AnyObject {
+    func cellDidTapPlay(_ cell: VoiceMessageCell, message: VoiceMessage)
+    func cellDidSeek(_ cell: VoiceMessageCell, message: VoiceMessage, progress: Float)
+}
+
+/// 语音消息气泡 Cell
+final class VoiceMessageCell: UICollectionViewCell {
+
+    static let reuseID = "VoiceMessageCell"
+
+    weak var delegate: VoiceMessageCellDelegate?
+    private(set) var message: VoiceMessage?
+
+    // MARK: - 子视图
+
+    private let bubble = UIView()
+    private let playBtn = UIButton(type: .system)
+    private let durationLabel = UILabel()
+    /// 用 UISlider 替代 UIProgressView，支持拖拽跳转
+    private let seekSlider = UISlider()
+
+    /// 用户正在拖拽时为 true，屏蔽来自播放器的进度更新，避免抖动
+    private var isSeeking = false
+
+    // 未播放红点
+    private let unreadDot = UIView()
+
+    // MARK: - 初始化
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupUI()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: - UI 搭建
+
+    private func setupUI() {
+        backgroundColor = .clear
+
+        // 气泡容器
+        bubble.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.12)
+        bubble.layer.cornerRadius = 14
+        bubble.layer.masksToBounds = true
+        bubble.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(bubble)
+
+        // 播放按钮
+        playBtn.setImage(UIImage(systemName: "play.circle.fill"), for: .normal)
+        playBtn.tintColor = .systemBlue
+        playBtn.contentVerticalAlignment = .fill
+        playBtn.contentHorizontalAlignment = .fill
+        playBtn.translatesAutoresizingMaskIntoConstraints = false
+        playBtn.addTarget(self, action: #selector(playTapped), for: .touchUpInside)
+        bubble.addSubview(playBtn)
+
+        // 未播放红点（叠在播放按钮右上角）
+        unreadDot.backgroundColor = .systemRed
+        unreadDot.layer.cornerRadius = 5
+        unreadDot.translatesAutoresizingMaskIntoConstraints = false
+        // 加到 contentView 层，避免被 bubble.masksToBounds 裁掉一半
+        contentView.addSubview(unreadDot)
+
+        // 时长标签
+        durationLabel.font = .monospacedDigitSystemFont(ofSize: 14, weight: .medium)
+        durationLabel.textColor = .label
+        durationLabel.translatesAutoresizingMaskIntoConstraints = false
+        bubble.addSubview(durationLabel)
+
+        // 进度滑块（播放时才显示）
+        seekSlider.minimumValue = 0
+        seekSlider.maximumValue = 1
+        seekSlider.value = 0
+        seekSlider.minimumTrackTintColor = .systemBlue
+        seekSlider.maximumTrackTintColor = UIColor.label.withAlphaComponent(0.12)
+        // 缩小 thumb，视觉接近 ProgressView 同时支持拖拽
+        let thumbSize = CGSize(width: 14, height: 14)
+        seekSlider.setThumbImage(makeThumbImage(size: thumbSize, color: .systemBlue), for: .normal)
+        seekSlider.setThumbImage(makeThumbImage(size: thumbSize, color: .systemBlue), for: .highlighted)
+        seekSlider.isHidden = true
+        seekSlider.translatesAutoresizingMaskIntoConstraints = false
+        // 手指按下：标记用户正在拖拽，暂停接收播放器进度更新
+        seekSlider.addTarget(self, action: #selector(sliderTouchDown), for: .touchDown)
+        // 拖动中：实时刷新剩余时长标签
+        seekSlider.addTarget(self, action: #selector(sliderValueChanged), for: .valueChanged)
+        // 手指抬起（无论是否在 slider 内）：执行 seek
+        seekSlider.addTarget(self, action: #selector(sliderTouchUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        bubble.addSubview(seekSlider)
+
+        NSLayoutConstraint.activate([
+            // 气泡靠左，最大宽度 65%
+            bubble.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            bubble.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
+            bubble.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -6),
+            bubble.widthAnchor.constraint(greaterThanOrEqualToConstant: 130),
+            bubble.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.65),
+
+            // 播放按钮
+            playBtn.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: 10),
+            playBtn.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
+            playBtn.widthAnchor.constraint(equalToConstant: 32),
+            playBtn.heightAnchor.constraint(equalToConstant: 32),
+
+            // 未播放红点：直径 10pt，吸附在播放按钮右上角
+            unreadDot.widthAnchor.constraint(equalToConstant: 10),
+            unreadDot.heightAnchor.constraint(equalToConstant: 10),
+            unreadDot.centerXAnchor.constraint(equalTo: playBtn.trailingAnchor, constant: -2),
+            unreadDot.centerYAnchor.constraint(equalTo: playBtn.topAnchor, constant: 2),
+
+            // 时长标签
+            durationLabel.leadingAnchor.constraint(equalTo: playBtn.trailingAnchor, constant: 8),
+            durationLabel.topAnchor.constraint(equalTo: bubble.topAnchor, constant: 10),
+            durationLabel.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -12),
+
+            // 进度滑块
+            seekSlider.leadingAnchor.constraint(equalTo: playBtn.trailingAnchor, constant: 4),
+            seekSlider.topAnchor.constraint(equalTo: durationLabel.bottomAnchor, constant: 2),
+            seekSlider.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -8),
+            seekSlider.bottomAnchor.constraint(equalTo: bubble.bottomAnchor, constant: -8),
+        ])
+    }
+
+    // MARK: - 配置
+
+    func configure(with message: VoiceMessage, isPlaying: Bool, progress: Float, isUnread: Bool) {
+        self.message = message
+        applyPlayState(isPlaying: isPlaying, progress: progress)
+        unreadDot.isHidden = !isUnread
+    }
+
+    /// 标记为已读（播放时调用）
+    func markAsRead() {
+        guard !unreadDot.isHidden else { return }
+        UIView.animate(withDuration: 0.2) {
+            self.unreadDot.alpha = 0
+        } completion: { _ in
+            self.unreadDot.isHidden = true
+            self.unreadDot.alpha = 1
+        }
+    }
+
+    func applyPlayState(isPlaying: Bool, progress: Float) {
+        let icon = isPlaying ? "stop.circle.fill" : "play.circle.fill"
+        playBtn.setImage(UIImage(systemName: icon), for: .normal)
+        seekSlider.isHidden = !isPlaying
+
+        if isPlaying {
+            // 用户拖拽期间不更新滑块位置，避免抖动；但始终刷新剩余时长
+            if !isSeeking {
+                seekSlider.value = progress
+            }
+            updateRemainingLabel(progress: seekSlider.value)
+        } else {
+            isSeeking = false
+            seekSlider.value = 0
+            showTotalDuration()
+        }
+    }
+
+    // MARK: - 时长标签
+
+    private func showTotalDuration() {
+        guard let msg = message else { return }
+        let secs = Int(msg.duration.rounded(.up))
+        durationLabel.text = String(format: "%d\"", max(secs, 1))
+    }
+
+    private func updateRemainingLabel(progress: Float) {
+        guard let msg = message else { return }
+        let remaining = msg.duration * Double(1.0 - progress)
+        let secs = Int(remaining.rounded(.up))
+        durationLabel.text = String(format: "%d\"", max(secs, 0))
+    }
+
+    // MARK: - Slider 事件
+
+    @objc private func sliderTouchDown() {
+        isSeeking = true
+    }
+
+    @objc private func sliderValueChanged() {
+        updateRemainingLabel(progress: seekSlider.value)
+    }
+
+    @objc private func sliderTouchUp() {
+        guard let msg = message else {
+            isSeeking = false
+            return
+        }
+        isSeeking = false
+        delegate?.cellDidSeek(self, message: msg, progress: seekSlider.value)
+    }
+
+    // MARK: - 播放按钮事件
+
+    @objc private func playTapped() {
+        guard let msg = message else { return }
+        delegate?.cellDidTapPlay(self, message: msg)
+    }
+
+    // MARK: - 私有工具
+
+    private func makeThumbImage(size: CGSize, color: UIColor) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { ctx in
+            color.setFill()
+            ctx.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
