@@ -1,0 +1,270 @@
+import UIKit
+
+/// 聊天输入栏（文字模式 / 语音模式）
+///
+/// # 通信方式
+/// 不使用 delegate，通过闭包向外暴露事件，ViewController 按需注入：
+/// - `onSend`：用户点击发送或 return 键，携带文本内容
+/// - `onLongPress`：长按"按住说话"按钮，将手势对象透传给 ViewController 处理录音逻辑
+/// - `onHeightChange`：输入栏高度变化后通知 ViewController 滚动列表，防止消息被遮挡
+///
+/// # 外部调用接口
+/// - `updateVoiceButton(title:backgroundColor:borderColor:)`：ViewController 根据录音状态更新按钮外观
+/// - `setTextInputEnabled(_:)`：录音期间禁用文字输入
+@MainActor
+final class ChatInputView: UIView {
+
+    // MARK: - 回调
+
+    var onSend: ((String) -> Void)?
+    /// 长按手势透传给 ViewController，由其负责录音状态机；
+    /// ChatInputView 不持有录音逻辑，保持职责单一
+    var onLongPress: ((UILongPressGestureRecognizer) -> Void)?
+    /// 输入栏高度发生变化时回调（动画结束后触发）
+    /// 注意：回调在动画 completion 里执行，此时 collectionView 已完成重新布局，
+    /// scrollToItem 才能拿到正确的目标位置；若在动画开始前调用会定位偏移
+    var onHeightChange: (() -> Void)?
+
+    // MARK: - 子视图
+
+    private let textView         = UITextView()
+    private let placeholderLabel = UILabel()
+    private let sendButton       = UIButton(type: .system)
+    /// 右侧切换按钮：文字模式显示 mic.fill，语音模式显示 keyboard
+    private let toggleButton     = UIButton(type: .system)
+    /// 语音模式下的"按住说话"按钮，替换 textView + sendButton；
+    /// internal 级别供 ViewController 在 updateVoiceButton 中访问其外观属性
+    let voiceInputButton         = UIButton(type: .system)
+
+    // MARK: - 内部状态
+
+    private enum InputMode { case text, voice }
+    /// 注意：inputMode 仅在 ChatInputView 内部管理，外部通过 setTextInputEnabled / updateVoiceButton
+    /// 等接口影响状态，不直接读写 inputMode，保持封装性
+    private var inputMode: InputMode = .text
+
+    /// textView 高度约束，由 textViewDidChange 动态更新，上限 120pt（约 5 行）；
+    /// 注意：必须持有强引用，否则从 AutoLayout 引擎取出后为 nil
+    private var textViewHeightConstraint: NSLayoutConstraint!
+    /// 上次 layout 时 textView 的宽度，用于检测旋转引起的宽度变化
+    private var lastLayoutWidth: CGFloat = 0
+
+    // MARK: - 初始化
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupUI()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: - UI 搭建
+
+    private func setupUI() {
+        backgroundColor = .secondarySystemBackground
+
+        // ── 切换按钮（右下角固定）──────────────────────────────────────────────
+        // 文字模式：mic.fill；语音模式：keyboard
+        // 注意：toggleButton 先于 textView/voiceInputButton 添加并布局，
+        // 因为后两者的 trailingAnchor 依赖 toggleButton.leadingAnchor
+        toggleButton.setImage(UIImage(systemName: "mic.fill"), for: .normal)
+        toggleButton.tintColor = .systemBlue
+        toggleButton.translatesAutoresizingMaskIntoConstraints = false
+        toggleButton.addTarget(self, action: #selector(toggleInputMode), for: .touchUpInside)
+        addSubview(toggleButton)
+
+        NSLayoutConstraint.activate([
+            toggleButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            toggleButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            toggleButton.widthAnchor.constraint(equalToConstant: 32),
+            toggleButton.heightAnchor.constraint(equalToConstant: 32),
+        ])
+
+        // ── 文字模式：textView + placeholderLabel + sendButton ────────────────
+        // UITextView 无内建 placeholder，用叠加的 placeholderLabel 模拟；
+        // placeholderLabel.isUserInteractionEnabled = false 保证触摸事件穿透到 textView
+        textView.font = .systemFont(ofSize: 16)
+        textView.layer.cornerRadius = 8
+        textView.layer.borderWidth = 1
+        textView.layer.borderColor = UIColor.separator.cgColor
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 6, bottom: 8, right: 6)
+        // isScrollEnabled 初始为 false：高度随内容增长，由 textViewHeightConstraint 控制；
+        // 超过 120pt 上限后切换为 true，改为内部滚动
+        textView.isScrollEnabled = false
+        textView.returnKeyType = .send
+        textView.delegate = self
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(textView)
+
+        placeholderLabel.text = "输入消息"
+        placeholderLabel.font = textView.font
+        placeholderLabel.textColor = .placeholderText
+        placeholderLabel.isUserInteractionEnabled = false
+        placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
+        textView.addSubview(placeholderLabel)
+
+        sendButton.setTitle("发送", for: .normal)
+        sendButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
+        sendButton.isEnabled = false
+        sendButton.alpha = 0.4
+        sendButton.translatesAutoresizingMaskIntoConstraints = false
+        sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
+        // 注意：必须同时设置 hugging + compressionResistance 为 required，
+        // 否则 textView 宽度增长时会将发送按钮压缩至零宽
+        sendButton.setContentHuggingPriority(.required, for: .horizontal)
+        sendButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        addSubview(sendButton)
+
+        // textView 的 top/bottom 同时约束到 ChatInputView，负责撑开整体高度；
+        // textViewHeightConstraint 控制单行到多行的增长，与 top/bottom 共同作用
+        textViewHeightConstraint = textView.heightAnchor.constraint(equalToConstant: 36)
+
+        NSLayoutConstraint.activate([
+            textView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            textView.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            textView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            textViewHeightConstraint,
+
+            // placeholder 与 textView 文字起点对齐（inset + textContainer 偏移）
+            placeholderLabel.topAnchor.constraint(equalTo: textView.topAnchor,
+                                                   constant: textView.textContainerInset.top),
+            placeholderLabel.leadingAnchor.constraint(equalTo: textView.leadingAnchor,
+                                                       constant: textView.textContainerInset.left + 4),
+
+            sendButton.leadingAnchor.constraint(equalTo: textView.trailingAnchor, constant: 8),
+            sendButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -8),
+            sendButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+        ])
+
+        // ── 语音模式："按住说话"按钮（初始隐藏）────────────────────────────
+        // voiceInputButton 与 textView+sendButton 占据同一区域，通过 isHidden 互斥切换；
+        // 两者同时存在于视图层级中，约束始终激活，不会产生约束冲突
+        voiceInputButton.setTitle("按住说话", for: .normal)
+        voiceInputButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+        voiceInputButton.backgroundColor = .systemBackground
+        voiceInputButton.setTitleColor(.label, for: .normal)
+        voiceInputButton.layer.cornerRadius = 8
+        voiceInputButton.layer.borderWidth = 1
+        voiceInputButton.layer.borderColor = UIColor.separator.cgColor
+        voiceInputButton.isHidden = true
+        voiceInputButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(voiceInputButton)
+
+        NSLayoutConstraint.activate([
+            voiceInputButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            voiceInputButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -8),
+            voiceInputButton.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            voiceInputButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            voiceInputButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 36),
+        ])
+
+        // 长按手势绑定在 voiceInputButton；
+        // allowableMovement = 2000 保证手指上滑取消时手势不会被系统提前取消
+        let lp = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        lp.minimumPressDuration = 0.3
+        lp.allowableMovement = 2000
+        voiceInputButton.addGestureRecognizer(lp)
+    }
+
+    // MARK: - 输入模式切换
+
+    @objc private func toggleInputMode() {
+        switch inputMode {
+        case .text:
+            // 文字 → 语音：收起键盘，隐藏文字控件，显示"按住说话"
+            textView.resignFirstResponder()
+            inputMode = .voice
+            textView.isHidden = true
+            sendButton.isHidden = true
+            voiceInputButton.isHidden = false
+            toggleButton.setImage(UIImage(systemName: "keyboard"), for: .normal)
+        case .voice:
+            // 语音 → 文字：显示文字控件，隐藏"按住说话"，聚焦输入框
+            inputMode = .text
+            voiceInputButton.isHidden = true
+            textView.isHidden = false
+            sendButton.isHidden = false
+            toggleButton.setImage(UIImage(systemName: "mic.fill"), for: .normal)
+            textView.becomeFirstResponder()
+        }
+    }
+
+    // MARK: - 发送
+
+    @objc private func sendTapped() {
+        let content = textView.text.trimmingCharacters(in: .whitespaces)
+        guard !content.isEmpty else { return }
+        textView.text = nil
+        // 清空 text 后 textViewDidChange 不会自动触发，需手动调用一次，
+        // 以同步重置高度约束和 placeholder 显示状态
+        textViewDidChange(textView)
+        onSend?(content)
+    }
+
+    private func updateSendButton() {
+        let hasText = !textView.text.trimmingCharacters(in: .whitespaces).isEmpty
+        sendButton.isEnabled = hasText
+        sendButton.alpha = hasText ? 1 : 0.4
+    }
+
+    // MARK: - 长按手势透传
+
+    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        onLongPress?(gesture)
+    }
+
+    // MARK: - 外部接口
+
+    /// ViewController 根据录音状态（idle / recording / cancelReady）调用此方法更新按钮外观；
+    /// 语音模式下 voiceInputButton 可见时调用才有视觉效果，文字模式下调用无副作用
+    func updateVoiceButton(title: String, backgroundColor: UIColor, borderColor: CGColor) {
+        voiceInputButton.setTitle(title, for: .normal)
+        voiceInputButton.backgroundColor = backgroundColor
+        voiceInputButton.layer.borderColor = borderColor
+    }
+
+    /// 录音期间禁用文字输入，录音结束后恢复；
+    /// 语音模式下 textView 已隐藏，isEditable 变化不影响 UI，调用无副作用
+    func setTextInputEnabled(_ enabled: Bool) {
+        textView.isEditable = enabled
+    }
+}
+
+// MARK: - UITextViewDelegate
+
+extension ChatInputView: UITextViewDelegate {
+
+    func textView(_ textView: UITextView,
+                  shouldChangeTextIn range: NSRange,
+                  replacementText text: String) -> Bool {
+        // 回车键（returnKeyType = .send）拦截为发送，不插入换行
+        if text == "\n" {
+            sendTapped()
+            return false
+        }
+        return true
+    }
+
+    func textViewDidChange(_ textView: UITextView) {
+        // placeholder 有文字时隐藏
+        placeholderLabel.isHidden = !textView.text.isEmpty
+        updateSendButton()
+
+        // 动态调整高度，上限 120pt（约 5 行）；超出后切换为内部滚动
+        // 注意：sizeThatFits 必须传入当前实际宽度，传 .greatestFiniteMagnitude 会导致高度计算偏低
+        let maxHeight: CGFloat = 120
+        let fitSize = textView.sizeThatFits(CGSize(width: textView.bounds.width, height: .infinity))
+        let newHeight = min(fitSize.height, maxHeight)
+        textView.isScrollEnabled = fitSize.height > maxHeight
+        if textViewHeightConstraint.constant != newHeight {
+            textViewHeightConstraint.constant = newHeight
+            // 注意：onHeightChange 在动画 completion 里触发，
+            // 此时父视图布局已完成，ViewController 的 scrollToItem 才能定位准确
+            UIView.animate(withDuration: 0.15) {
+                self.layoutIfNeeded()
+            } completion: { _ in
+                self.onHeightChange?()
+            }
+        }
+    }
+}

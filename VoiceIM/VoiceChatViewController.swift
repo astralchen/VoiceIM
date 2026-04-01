@@ -16,23 +16,9 @@ final class VoiceChatViewController: UIViewController {
     // MARK: - UI
 
     private var collectionView: UICollectionView!
-    private let bottomBar       = UIView()
-    private let textField       = UITextField()
-    private let sendButton      = UIButton(type: .system)
-    /// 文字/语音输入模式切换按钮（右侧固定）
-    /// - 文字模式：mic.fill 图标，点击切换到语音模式
-    /// - 语音模式：keyboard 图标，点击切换回文字模式
-    private let toggleButton    = UIButton(type: .system)
-    /// 语音模式下替换文字输入框的"按住说话"按钮，长按触发录音
-    private let voiceInputButton = UIButton(type: .system)
-    private let overlayView     = RecordingOverlayView()
-    private var bottomBarBottomConstraint: NSLayoutConstraint!
-
-    // MARK: - 输入模式
-
-    private enum InputMode { case text, voice }
-    /// 当前输入模式，切换时同步更新底栏控件显示状态
-    private var inputMode: InputMode = .text
+    private let chatInputView = ChatInputView()
+    private let overlayView   = RecordingOverlayView()
+    private var inputViewBottomConstraint: NSLayoutConstraint!
 
     // MARK: - DiffableDataSource
 
@@ -77,7 +63,7 @@ final class VoiceChatViewController: UIViewController {
         title = "消息"
         view.backgroundColor = .systemBackground
         setupCollectionView()
-        setupBottomBar()
+        setupInputView()
         setupOverlay()
         setupPlaybackCallbacks()
         setupKeyboardObservers()
@@ -96,8 +82,8 @@ final class VoiceChatViewController: UIViewController {
 
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
-        // 初始化时将 bottomBar 底部紧贴安全区域底部
-        bottomBarBottomConstraint.constant = -view.safeAreaInsets.bottom
+        // 初始化时将输入栏底部紧贴安全区域底部
+        inputViewBottomConstraint.constant = -view.safeAreaInsets.bottom
     }
 
     // MARK: - UI 搭建
@@ -168,94 +154,40 @@ final class VoiceChatViewController: UIViewController {
         return UICollectionViewCompositionalLayout(section: section)
     }
 
-    private func setupBottomBar() {
-        bottomBar.backgroundColor = .secondarySystemBackground
-        bottomBar.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(bottomBar)
+    private func setupInputView() {
+        chatInputView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(chatInputView)
 
-        bottomBarBottomConstraint = bottomBar.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        inputViewBottomConstraint = chatInputView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
 
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: chatInputView.topAnchor),
 
-            bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bottomBarBottomConstraint,
-            bottomBar.heightAnchor.constraint(equalToConstant: 56),
+            chatInputView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            chatInputView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            inputViewBottomConstraint,
         ])
 
-        // ── 切换按钮（右侧固定）────────────────────────────────────────────────
-        // 文字模式：mic.fill；语音模式：keyboard —— 点击在两种输入模式间切换
-        toggleButton.setImage(UIImage(systemName: "mic.fill"), for: .normal)
-        toggleButton.tintColor = .systemBlue
-        toggleButton.translatesAutoresizingMaskIntoConstraints = false
-        toggleButton.addTarget(self, action: #selector(toggleInputMode), for: .touchUpInside)
-        bottomBar.addSubview(toggleButton)
+        // 用户发送文本
+        chatInputView.onSend = { [weak self] text in
+            self?.appendMessage(.text(text))
+        }
 
-        NSLayoutConstraint.activate([
-            toggleButton.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -12),
-            toggleButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
-            toggleButton.widthAnchor.constraint(equalToConstant: 32),
-            toggleButton.heightAnchor.constraint(equalToConstant: 32),
-        ])
+        // 长按"按住说话"手势透传给 ViewController 处理录音状态机
+        chatInputView.onLongPress = { [weak self] gesture in
+            self?.handleLongPress(gesture)
+        }
 
-        // ── 文字模式控件：textField + sendButton ─────────────────────────────
-        textField.placeholder = "输入消息"
-        textField.borderStyle = .roundedRect
-        textField.returnKeyType = .send
-        textField.delegate = self
-        textField.translatesAutoresizingMaskIntoConstraints = false
-        textField.addTarget(self, action: #selector(textFieldChanged), for: .editingChanged)
-        bottomBar.addSubview(textField)
-
-        sendButton.setTitle("发送", for: .normal)
-        sendButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
-        sendButton.isEnabled = false
-        sendButton.alpha = 0.4
-        sendButton.translatesAutoresizingMaskIntoConstraints = false
-        sendButton.addTarget(self, action: #selector(sendTextTapped), for: .touchUpInside)
-        bottomBar.addSubview(sendButton)
-
-        NSLayoutConstraint.activate([
-            textField.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
-            textField.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
-            textField.heightAnchor.constraint(equalToConstant: 36),
-
-            sendButton.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 8),
-            sendButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -8),
-            sendButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
-        ])
-
-        // ── 语音模式控件：voiceInputButton（"按住说话"）─────────────────────
-        // 初始隐藏；切换到语音模式后显示，占据 textField + sendButton 的位置
-        voiceInputButton.setTitle("按住说话", for: .normal)
-        voiceInputButton.setTitle("松开 发送", for: .highlighted)
-        voiceInputButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
-        voiceInputButton.backgroundColor = .systemBackground
-        voiceInputButton.setTitleColor(.label, for: .normal)
-        voiceInputButton.layer.cornerRadius = 8
-        voiceInputButton.layer.borderWidth = 1
-        voiceInputButton.layer.borderColor = UIColor.separator.cgColor
-        voiceInputButton.isHidden = true
-        voiceInputButton.translatesAutoresizingMaskIntoConstraints = false
-        bottomBar.addSubview(voiceInputButton)
-
-        NSLayoutConstraint.activate([
-            voiceInputButton.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
-            voiceInputButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -8),
-            voiceInputButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
-            voiceInputButton.heightAnchor.constraint(equalToConstant: 36),
-        ])
-
-        // 长按手势绑定在 voiceInputButton 上（原先在 recordButton）
-        let lp = UILongPressGestureRecognizer(target: self,
-                                              action: #selector(handleLongPress(_:)))
-        lp.minimumPressDuration = 0.3
-        lp.allowableMovement = 2000
-        voiceInputButton.addGestureRecognizer(lp)
+        // 输入栏增高后，若用户在底部附近则滚动列表，防止消息被遮挡
+        chatInputView.onHeightChange = { [weak self] in
+            guard let self, isNearBottom, !messages.isEmpty else { return }
+            collectionView.scrollToItem(
+                at: IndexPath(item: messages.count - 1, section: 0),
+                at: .bottom, animated: true)
+        }
     }
 
     private func setupOverlay() {
@@ -279,52 +211,9 @@ final class VoiceChatViewController: UIViewController {
         }
     }
 
-    // MARK: - 输入模式切换
-
-    @objc private func toggleInputMode() {
-        switch inputMode {
-        case .text:
-            // 文字 → 语音：收起键盘，隐藏文字控件，显示"按住说话"
-            textField.resignFirstResponder()
-            inputMode = .voice
-            textField.isHidden = true
-            sendButton.isHidden = true
-            voiceInputButton.isHidden = false
-            toggleButton.setImage(UIImage(systemName: "keyboard"), for: .normal)
-        case .voice:
-            // 语音 → 文字：显示文字控件，隐藏"按住说话"，聚焦输入框
-            inputMode = .text
-            voiceInputButton.isHidden = true
-            textField.isHidden = false
-            sendButton.isHidden = false
-            toggleButton.setImage(UIImage(systemName: "mic.fill"), for: .normal)
-            textField.becomeFirstResponder()
-        }
-    }
-
-    // MARK: - 文本发送
-
-    @objc private func textFieldChanged() {
-        updateSendButton()
-    }
-
-    @objc private func sendTextTapped() {
-        let content = textField.text?.trimmingCharacters(in: .whitespaces) ?? ""
-        guard !content.isEmpty else { return }
-        textField.text = nil
-        updateSendButton()
-        appendMessage(.text(content))
-    }
-
-    private func updateSendButton() {
-        let hasText = !(textField.text?.trimmingCharacters(in: .whitespaces).isEmpty ?? true)
-        sendButton.isEnabled = hasText
-        sendButton.alpha = hasText ? 1 : 0.4
-    }
-
     // MARK: - 长按手势处理
 
-    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+    private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
         switch gesture.state {
 
         case .began:
@@ -378,7 +267,7 @@ final class VoiceChatViewController: UIViewController {
                 self.recordState = .recording
                 self.elapsedSeconds = 0
                 self.showOverlay()
-                self.updateRecordButton()
+                self.updateVoiceButton()
                 self.startCountdown()
             } catch {
                 ToastView.show("录音启动失败", in: self.view)
@@ -428,27 +317,27 @@ final class VoiceChatViewController: UIViewController {
     private func enterCancelReady() {
         recordState = .cancelReady
         overlayView.setState(.cancelReady)
-        updateRecordButton()
+        updateVoiceButton()
     }
 
     private func enterNormalRecording() {
         recordState = .recording
         overlayView.setState(.recording)
-        updateRecordButton()
+        updateVoiceButton()
     }
 
     private func resetToIdle() {
         recordState = .idle
         hideOverlay()
-        updateRecordButton()
-        if inputMode == .text { textField.isEnabled = true }
+        updateVoiceButton()
+        chatInputView.setTextInputEnabled(true)
     }
 
     // MARK: - UI 更新
 
     private func showOverlay() {
-        // 录音期间禁用文字输入（语音模式下 textField 已隐藏，仅文字模式需要禁用）
-        if inputMode == .text { textField.isEnabled = false }
+        // 录音期间禁用文字输入（语音模式下 textView 已隐藏，setTextInputEnabled 调用无副作用）
+        chatInputView.setTextInputEnabled(false)
         overlayView.setState(.recording)
         overlayView.updateSeconds(0)
         overlayView.isHidden = false
@@ -464,20 +353,24 @@ final class VoiceChatViewController: UIViewController {
         }
     }
 
-    private func updateRecordButton() {
+    /// 根据录音状态更新"按住说话"按钮外观
+    private func updateVoiceButton() {
         switch recordState {
         case .idle:
-            voiceInputButton.setTitle("按住说话", for: .normal)
-            voiceInputButton.backgroundColor = .systemBackground
-            voiceInputButton.layer.borderColor = UIColor.separator.cgColor
+            chatInputView.updateVoiceButton(
+                title: "按住说话",
+                backgroundColor: .systemBackground,
+                borderColor: UIColor.separator.cgColor)
         case .recording:
-            voiceInputButton.setTitle("松开 发送", for: .normal)
-            voiceInputButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.08)
-            voiceInputButton.layer.borderColor = UIColor.systemBlue.cgColor
+            chatInputView.updateVoiceButton(
+                title: "松开 发送",
+                backgroundColor: UIColor.systemBlue.withAlphaComponent(0.08),
+                borderColor: UIColor.systemBlue.cgColor)
         case .cancelReady:
-            voiceInputButton.setTitle("松开 取消", for: .normal)
-            voiceInputButton.backgroundColor = UIColor.systemRed.withAlphaComponent(0.08)
-            voiceInputButton.layer.borderColor = UIColor.systemRed.cgColor
+            chatInputView.updateVoiceButton(
+                title: "松开 取消",
+                backgroundColor: UIColor.systemRed.withAlphaComponent(0.08),
+                borderColor: UIColor.systemRed.cgColor)
         }
     }
 
@@ -638,16 +531,6 @@ extension VoiceChatViewController: VoiceMessageCellDelegate {
     }
 }
 
-// MARK: - UITextFieldDelegate
-
-extension VoiceChatViewController: UITextFieldDelegate {
-
-    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        sendTextTapped()
-        return true
-    }
-}
-
 // MARK: - Mock 数据
 
 extension VoiceChatViewController {
@@ -696,7 +579,7 @@ extension VoiceChatViewController {
         let shouldScroll = isNearBottom
         let options = UIView.AnimationOptions(rawValue: curveRaw << 16)
         UIView.animate(withDuration: duration, delay: 0, options: options) {
-            self.bottomBarBottomConstraint.constant = offset
+            self.inputViewBottomConstraint.constant = offset
             self.view.layoutIfNeeded()
         } completion: { _ in
             if shouldScroll, !self.messages.isEmpty {

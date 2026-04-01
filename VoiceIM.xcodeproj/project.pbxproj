@@ -19,6 +19,7 @@
 		A38F3DC2E33EA65CC7CC25C3 /* VoiceMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5598E92C49B4AFDEBBF9ABD /* VoiceMessageCell.swift */; };
 		D20CA357C52671211BAC322E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C46C5B588FB0FB03FC2E4F5 /* AppDelegate.swift */; };
 		DD67BA77CB031567ACB690F0 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA60A2B83B3AFDF7BC339CE9 /* ChatMessage.swift */; };
+		E33EAF93920D0C7754364DAF /* ChatInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED324E0D0BCF9956077EC3AC /* ChatInputView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,6 +35,7 @@
 		C90CCA3FBF8E477BD57BD727 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		C965731AD4227230ADCB2E2C /* VoiceIM.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceIM.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5598E92C49B4AFDEBBF9ABD /* VoiceMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageCell.swift; sourceTree = "<group>"; };
+		ED324E0D0BCF9956077EC3AC /* ChatInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputView.swift; sourceTree = "<group>"; };
 		F41F0A46908331582861C001 /* VoiceRecordManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecordManager.swift; sourceTree = "<group>"; };
 		FE150653DE97068F4C160094 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -43,6 +45,7 @@
 			isa = PBXGroup;
 			children = (
 				1C46C5B588FB0FB03FC2E4F5 /* AppDelegate.swift */,
+				ED324E0D0BCF9956077EC3AC /* ChatInputView.swift */,
 				AA60A2B83B3AFDF7BC339CE9 /* ChatMessage.swift */,
 				FE150653DE97068F4C160094 /* Info.plist */,
 				99648386B953F022B1C8BB44 /* Launch Screen.storyboard */,
@@ -146,6 +149,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D20CA357C52671211BAC322E /* AppDelegate.swift in Sources */,
+				E33EAF93920D0C7754364DAF /* ChatInputView.swift in Sources */,
 				DD67BA77CB031567ACB690F0 /* ChatMessage.swift in Sources */,
 				6226BE708901949D7EC1BA2B /* RecordingOverlayView.swift in Sources */,
 				073E52EDA48F57C817AEFF7C /* SceneDelegate.swift in Sources */,
