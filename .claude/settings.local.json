@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcodebuild -project VoiceIM.xcodeproj -scheme VoiceIM -destination \"generic/platform=iOS Simulator\" -configuration Debug CODE_SIGNING_ALLOWED=NO build)",
+      "Bash(xcodegen generate:*)",
+      "Bash(xcodebuild:*)"
+    ]
+  }
+}

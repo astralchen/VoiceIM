@@ -17,7 +17,7 @@ final class VoiceChatViewController: UIViewController {
 
     private var collectionView: UICollectionView!
     private let chatInputView = ChatInputView()
-    private let overlayView   = RecordingOverlayView()
+    private let overlayVC     = RecordingOverlayViewController()
     private var inputViewBottomConstraint: NSLayoutConstraint!
 
     // MARK: - DiffableDataSource
@@ -71,7 +71,6 @@ final class VoiceChatViewController: UIViewController {
         view.backgroundColor = .systemBackground
         setupCollectionView()
         setupInputView()
-        setupOverlay()
         setupPlaybackCallbacks()
         setupKeyboardObservers()
         insertMockMessages()
@@ -225,18 +224,6 @@ final class VoiceChatViewController: UIViewController {
         }
     }
 
-    private func setupOverlay() {
-        overlayView.isHidden = true
-        overlayView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(overlayView)
-
-        NSLayoutConstraint.activate([
-            overlayView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            overlayView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            overlayView.widthAnchor.constraint(equalToConstant: 165),
-        ])
-    }
-
     private func setupPlaybackCallbacks() {
         player.onProgress = { [weak self] id, progress in
             self?.cellForMessage(id: id)?.applyPlayState(isPlaying: true, progress: progress)
@@ -316,7 +303,7 @@ final class VoiceChatViewController: UIViewController {
             Task { @MainActor [weak self] in
                 guard let self, self.recordState != .idle else { return }
                 self.elapsedSeconds += 1
-                self.overlayView.updateSeconds(self.elapsedSeconds)
+                self.overlayVC.updateSeconds(self.elapsedSeconds)
                 if self.elapsedSeconds >= self.maxRecordSeconds {
                     self.finishAndSend()
                 }
@@ -351,13 +338,13 @@ final class VoiceChatViewController: UIViewController {
 
     private func enterCancelReady() {
         recordState = .cancelReady
-        overlayView.setState(.cancelReady)
+        overlayVC.setState(.cancelReady)
         updateVoiceButton()
     }
 
     private func enterNormalRecording() {
         recordState = .recording
-        overlayView.setState(.recording)
+        overlayVC.setState(.recording)
         updateVoiceButton()
     }
 
@@ -371,21 +358,15 @@ final class VoiceChatViewController: UIViewController {
     // MARK: - UI 更新
 
     private func showOverlay() {
-        // 录音期间禁用文字输入（语音模式下 textView 已隐藏，setTextInputEnabled 调用无副作用）
+        // 录音期间禁用文字输入（语音模式下 textView 已隐藏，调用无副作用）
         chatInputView.setTextInputEnabled(false)
-        overlayView.setState(.recording)
-        overlayView.updateSeconds(0)
-        overlayView.isHidden = false
-        overlayView.alpha = 0
-        UIView.animate(withDuration: 0.2) { self.overlayView.alpha = 1 }
+        overlayVC.setState(.recording)
+        overlayVC.updateSeconds(0)
+        present(overlayVC, animated: true)
     }
 
     private func hideOverlay() {
-        UIView.animate(withDuration: 0.2) {
-            self.overlayView.alpha = 0
-        } completion: { _ in
-            self.overlayView.isHidden = true
-        }
+        overlayVC.dismiss(animated: true)
     }
 
     /// 根据录音状态更新"按住说话"按钮外观
