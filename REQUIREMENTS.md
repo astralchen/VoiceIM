@@ -41,12 +41,45 @@
 |------|----------|---------|
 | 语音消息 | `ChatMessage.Kind.voice(localURL:remoteURL:duration:)` | `VoiceMessageCell` |
 | 文本消息 | `ChatMessage.Kind.text(String)` | `TextMessageCell` |
+| 图片消息 | `ChatMessage.Kind.image(localURL:remoteURL:)` | `ImageMessageCell` |
+| 视频消息 | `ChatMessage.Kind.video(localURL:remoteURL:duration:)` | `VideoMessageCell` |
 
 ### 2.2 发送者与方向
 
 - 每条消息携带 `sender: Sender`（含 `id`、`displayName`）和 `sentAt: Date`。
 - `isOutgoing = sender.id == "me"`，决定气泡靠右（自己）还是靠左（对方）。
 - 头像为 36×36 圆形占位：背景色由 `sender.id` UTF-8 字节求和映射到固定调色板，中心显示 `displayName` 首字母。同一发送者颜色跨 session 保持一致。
+
+### 2.3 消息发送状态
+
+每条消息携带 `sendStatus: SendStatus` 字段，仅自己发送的消息（`isOutgoing = true`）显示状态指示器。
+
+| 状态 | 枚举值 | UI 展示 | 说明 |
+|------|--------|---------|------|
+| 发送中 | `.sending` | 旋转的加载指示器（UIActivityIndicatorView） | 消息正在发送到服务器 |
+| 已送达 | `.delivered` | 单勾（暂未实现 UI） | 消息已送达服务器 |
+| 已读 | `.read` | 双勾（暂未实现 UI） | 对方已读消息 |
+| 发送失败 | `.failed` | 红色感叹号图标（可点击重试） | 消息发送失败，点击重试 |
+
+#### 状态指示器位置
+- 位于气泡左侧（发送方消息靠右，状态指示器在气泡与头像之间）
+- 垂直居中对齐气泡
+- 尺寸：加载指示器 20×20pt，失败图标 24×24pt
+
+#### 重试逻辑
+- 点击失败图标触发重试
+- 删除失败的消息（带删除动画）
+- 根据消息类型重新创建并发送：
+  - 语音消息：使用原 `localURL` 重新发送（若文件丢失则提示用户）
+  - 文本消息：使用原文本内容重新发送
+  - 图片消息：使用原 `localURL` 重新发送（若文件丢失则提示用户）
+  - 视频消息：使用原 `localURL` 重新发送（若文件丢失则提示用户）
+- 新消息追加到列表底部，状态为 `.sending`
+
+#### 模拟发送（开发阶段）
+- 延迟 1-2 秒模拟网络请求
+- 70% 成功率（`.delivered`），30% 失败率（`.failed`）
+- 生产环境替换为真实网络请求
 
 ### 2.3 时间分隔行
 
@@ -122,7 +155,67 @@
 
 ---
 
-## 四、未读提醒
+## 四、图片和视频消息
+
+### 4.1 扩展功能按钮
+
+- 输入栏左侧显示扩展功能按钮（蓝色 `plus.circle.fill` 图标，32×32pt）
+- 点击弹出功能菜单（`UIAlertController`，`.actionSheet` 样式）
+- 菜单选项：
+  - **相册**：打开系统相册选择器
+  - **拍照**：开发中
+  - **位置**：开发中
+  - **取消**
+
+### 4.2 相册选择
+
+- 使用 `PHPickerViewController`（iOS 14+）
+- 支持选择图片和视频（`.any(of: [.images, .videos])`）
+- 单选模式（`selectionLimit = 1`）
+- 选择后自动复制到临时目录
+- 视频自动提取时长（`AVAsset.duration`）
+
+### 4.3 图片消息
+
+**数据结构**：
+- `ChatMessage.Kind.image(localURL:remoteURL:)`
+- 工厂方法：`image(localURL:)`, `remoteImage(id:remoteURL:sender:sentAt:)`
+
+**UI 展示**（`ImageMessageCell`）：
+- 固定尺寸：200×200pt
+- 内容模式：`scaleAspectFill`
+- 加载指示器：居中显示
+- 点击图片：打开全屏预览
+
+**图片预览**（`ImagePreviewViewController`）：
+- 全屏黑色背景
+- 支持双指缩放（1.0x - 3.0x）
+- 双击缩放功能
+- 关闭按钮：右上角，白色 `xmark.circle.fill` 图标
+
+### 4.4 视频消息
+
+**数据结构**：
+- `ChatMessage.Kind.video(localURL:remoteURL:duration:)`
+- 工厂方法：`video(localURL:duration:)`, `remoteVideo(id:remoteURL:duration:sender:sentAt:)`
+
+**UI 展示**（`VideoMessageCell`）：
+- 固定尺寸：200×200pt
+- 视频缩略图：第一帧（`AVAssetImageGenerator`）
+- 播放按钮：居中，白色半透明背景，50×50pt
+- 时长标签：右下角，黑色半透明背景，格式 `M:SS`
+- 点击视频：打开全屏播放
+
+**视频预览**（`VideoPreviewViewController`）：
+- 使用 `AVPlayerViewController` 全屏播放
+- 系统原生播放控制器
+- 打开后自动播放（`viewDidAppear` 中调用 `player?.play()`）
+- 页面消失时自动暂停
+- 关闭按钮：右上角，白色 `xmark.circle.fill` 图标
+
+---
+
+## 五、未读提醒
 
 - 每条语音消息默认为**未读状态**，在气泡播放按钮右上角显示红色圆点（直径 10pt）。
 - 用户首次点击播放时，红点以 **0.2s 淡出动画**消失，标记为已读。
@@ -149,8 +242,10 @@
 |------|------|
 | 语言 | Swift 6.0，启用严格并发检查 |
 | UI 框架 | UIKit（无 SwiftUI） |
-| 最低系统 | iOS 13.0+ |
+| 最低系统 | iOS 15.0+ |
 | 音频框架 | AVFoundation（`AVAudioRecorder` 录音，`AVAudioPlayer` 播放） |
+| 相册选择 | PhotosUI（`PHPickerViewController`，iOS 14+） |
+| 视频播放 | AVKit（`AVPlayerViewController`） |
 | 列表组件 | `UICollectionView` + `UICollectionViewDiffableDataSource` + `UICollectionViewCompositionalLayout` |
 | 并发模型 | `async/await`，UI 操作统一在 `@MainActor`，下载缓存使用 `actor` |
 
@@ -160,36 +255,48 @@
 
 ```
 VoiceIM/
-├── ChatMessage.swift               // 通用消息数据模型（voice / text 两种 Kind）
-├── Sender.swift                    // 发送者身份（id、displayName，含 .me / .peer 预置值）
-├── ChatBubbleCell.swift            // Cell 基类（时间分隔行 + 头像 + 收/发方向约束）
-├── VoiceMessageCell.swift          // 语音消息 Cell（继承 ChatBubbleCell）
-├── TextMessageCell.swift           // 文本消息 Cell（继承 ChatBubbleCell）
-├── AvatarView.swift                // 圆形头像占位视图（颜色 + 首字母）
-├── MessageCellConfigurable.swift   // Cell 统一配置协议 + MessageCellDependencies
-├── ChatInputView.swift             // 输入栏（文字 / 语音切换）
-├── VoiceRecordManager.swift        // 录音管理（@MainActor 单例）
-├── VoiceCacheManager.swift         // 下载缓存（actor，线程安全）
-├── VoicePlaybackManager.swift      // 播放管理（@MainActor 单例，播放互斥）
-├── RecordingOverlayView.swift      // 录音浮层（正常 / 预备取消两态）
-├── ToastView.swift                 // 轻量 Toast 提示
-├── VoiceChatViewController.swift   // 主页面（UICollectionView + DiffableDataSource）
-├── AppDelegate.swift
-├── SceneDelegate.swift
-└── Info.plist                      // 含 NSMicrophoneUsageDescription
+├── App/                           # 应用入口
+│   ├── AppDelegate.swift
+│   └── SceneDelegate.swift
+├── Models/                        # 数据模型
+│   ├── ChatMessage.swift          # 通用消息数据模型（voice/text/image/video）
+│   └── Sender.swift               # 发送者身份（id、displayName）
+├── Views/                         # 视图组件
+│   ├── AvatarView.swift           # 圆形头像占位视图
+│   ├── ChatInputView.swift        # 输入栏（文字/语音切换 + 扩展按钮）
+│   ├── RecordingOverlayView.swift # 录音浮层（正常/预备取消两态）
+│   └── ToastView.swift            # 轻量 Toast 提示
+├── ViewControllers/               # 视图控制器
+│   ├── VoiceChatViewController.swift          # 主页面（UICollectionView + DiffableDataSource）
+│   ├── RecordingOverlayViewController.swift   # 录音浮层控制器
+│   ├── ImagePreviewViewController.swift       # 图片全屏预览
+│   └── VideoPreviewViewController.swift       # 视频全屏播放
+├── Managers/                      # 业务逻辑管理器
+│   ├── VoiceRecordManager.swift   # 录音管理（@MainActor 单例）
+│   ├── VoicePlaybackManager.swift # 播放管理（@MainActor 单例，播放互斥）
+│   └── VoiceCacheManager.swift    # 下载缓存（actor，线程安全）
+├── Cells/                         # 消息 Cell
+│   ├── ChatBubbleCell.swift       # Cell 基类（时间分隔行 + 头像 + 收/发方向约束 + 状态指示器）
+│   ├── VoiceMessageCell.swift     # 语音消息 Cell（继承 ChatBubbleCell）
+│   ├── TextMessageCell.swift      # 文本消息 Cell（继承 ChatBubbleCell）
+│   ├── ImageMessageCell.swift     # 图片消息 Cell（继承 ChatBubbleCell）
+│   └── VideoMessageCell.swift     # 视频消息 Cell（继承 ChatBubbleCell）
+├── Protocols/                     # 协议定义
+│   └── MessageCellConfigurable.swift  # Cell 统一配置协议 + MessageCellDependencies
+└── Info.plist                     # 含 NSMicrophoneUsageDescription
 ```
 
 ---
 
 ## 八、关键设计决策
 
-### 8.1 DiffableDataSource 与 isPlayed 更新（详见 ChatMessage.swift 注释）
+### 8.1 DiffableDataSource 与 isPlayed/sendStatus 更新（详见 ChatMessage.swift 注释）
 
-**问题**：`isPlayed` 是可变字段，但 DiffableDataSource 要求 item 符合 `Hashable`，状态更新方式影响视觉效果。
+**问题**：`isPlayed` 和 `sendStatus` 是可变字段，但 DiffableDataSource 要求 item 符合 `Hashable`，状态更新方式影响视觉效果。
 
 | 方案 | Hashable 依据 | 更新机制 | 问题 | 适用版本 |
 |------|---------------|----------|------|----------|
-| A | id + isPlayed | apply 新 snapshot | delete+insert 闪烁 | — |
+| A | id + isPlayed + sendStatus | apply 新 snapshot | delete+insert 闪烁 | — |
 | B（当前） | id | reloadItems + messages 数组 | 需维护两份数据 | iOS 13+ |
 | C（待升级） | id | reconfigureItems + insert/delete 替换 item | — | iOS 15+ |
 
@@ -225,3 +332,27 @@ VoiceIM/
 ### 8.7 头像颜色稳定性
 
 不使用 `String.hashValue`（Swift SE-0206 每次进程启动随机化），改用 UTF-8 字节求和映射到固定调色板，确保同一发送者头像颜色跨 session 一致。
+
+### 8.8 图片和视频消息的缩略图加载
+
+- **图片**：后台线程加载 `Data(contentsOf:)` → `UIImage(data:)`，主线程更新 UI
+- **视频**：使用 `AVAssetImageGenerator` 提取第一帧作为缩略图
+- 生产环境建议使用 SDWebImage 等专业图片加载库
+
+### 8.9 扩展功能按钮设计
+
+- 类似 iMessage 的 `+` 按钮，位于输入栏左侧
+- 通过 `UIAlertController` 弹出功能菜单
+- 使用 `PHPickerViewController` 选择相册（iOS 14+）
+- 预留拍照、位置等功能接口
+
+### 8.10 代码文件结构组织
+
+按功能模块分类到 7 个文件夹：
+- **App**: 应用入口（AppDelegate、SceneDelegate）
+- **Models**: 数据模型（ChatMessage、Sender）
+- **Views**: 视图组件（AvatarView、ChatInputView、RecordingOverlayView、ToastView）
+- **ViewControllers**: 视图控制器（主页面、录音浮层、图片/视频预览）
+- **Managers**: 业务逻辑管理器（录音、播放、缓存）
+- **Cells**: 消息 Cell（基类 + 4 种消息类型）
+- **Protocols**: 协议定义（MessageCellConfigurable）

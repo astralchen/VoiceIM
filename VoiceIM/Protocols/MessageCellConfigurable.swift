@@ -43,4 +43,10 @@ struct MessageCellDependencies {
 
     /// 语音 Cell 的事件委托；文本等其他 Cell 忽略此字段
     weak var voiceDelegate: VoiceMessageCellDelegate?
+
+    /// 图片 Cell 的事件委托
+    weak var imageDelegate: ImageMessageCellDelegate?
+
+    /// 视频 Cell 的事件委托
+    weak var videoDelegate: VideoMessageCellDelegate?
 }

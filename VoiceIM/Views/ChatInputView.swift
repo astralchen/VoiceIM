@@ -24,13 +24,17 @@ final class ChatInputView: UIView {
     /// 注意：回调在动画 completion 里执行，此时 collectionView 已完成重新布局，
     /// scrollToItem 才能拿到正确的目标位置；若在动画开始前调用会定位偏移
     var onHeightChange: (() -> Void)?
+    /// 扩展功能按钮点击回调（类似 iMessage 的 + 按钮）
+    var onExtensionTap: (() -> Void)?
 
     // MARK: - 子视图
 
+    /// 左侧扩展功能按钮（类似 iMessage 的 + 按钮）
+    private let extensionButton = UIButton(type: .system)
     private let textView         = UITextView()
     private let placeholderLabel = UILabel()
     private let sendButton       = UIButton(type: .system)
-    /// 右侧切换按钮：文字模式显示 mic.fill，语音模式显示 keyboard
+    /// 切换按钮：文字模式显示 mic.fill，语音模式显示 keyboard
     private let toggleButton     = UIButton(type: .system)
     /// 语音模式下的"按住说话"按钮，替换 textView + sendButton；
     /// internal 级别供 ViewController 在 updateVoiceButton 中访问其外观属性
@@ -53,6 +57,9 @@ final class ChatInputView: UIView {
     private var voiceTopConstraint: NSLayoutConstraint!
     private var voiceBottomConstraint: NSLayoutConstraint!
     private var voiceHeightConstraint: NSLayoutConstraint!
+    /// toggleButton 的 trailing 约束：文字模式相对于 sendButton，语音模式相对于父视图
+    private var toggleTrailingToSendButton: NSLayoutConstraint!
+    private var toggleTrailingToSuperview: NSLayoutConstraint!
     /// 上次 layout 时 textView 的宽度，用于检测旋转引起的宽度变化
     private var lastLayoutWidth: CGFloat = 0
 
@@ -97,18 +104,51 @@ final class ChatInputView: UIView {
     private func setupUI() {
         backgroundColor = .secondarySystemBackground
 
-        // ── 切换按钮（右下角固定）──────────────────────────────────────────────
+        // ── 扩展功能按钮（左下角固定，类似 iMessage 的 + 按钮）──────────────
+        extensionButton.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
+        extensionButton.tintColor = .systemBlue
+        extensionButton.translatesAutoresizingMaskIntoConstraints = false
+        extensionButton.addTarget(self, action: #selector(extensionTapped), for: .touchUpInside)
+        addSubview(extensionButton)
+
+        NSLayoutConstraint.activate([
+            extensionButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            extensionButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            extensionButton.widthAnchor.constraint(equalToConstant: 32),
+            extensionButton.heightAnchor.constraint(equalToConstant: 32),
+        ])
+
+        // ── 发送按钮（右下角固定）──────────────────────────────────────────────
+        sendButton.setTitle("发送", for: .normal)
+        sendButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
+        sendButton.isEnabled = false
+        sendButton.alpha = 0.4
+        sendButton.translatesAutoresizingMaskIntoConstraints = false
+        sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
+        sendButton.setContentHuggingPriority(.required, for: .horizontal)
+        sendButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        addSubview(sendButton)
+
+        NSLayoutConstraint.activate([
+            sendButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            sendButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+        ])
+
+        // ── 切换按钮（发送按钮左侧）──────────────────────────────────────────────
         // 文字模式：mic.fill；语音模式：keyboard
-        // 注意：toggleButton 先于 textView/voiceInputButton 添加并布局，
-        // 因为后两者的 trailingAnchor 依赖 toggleButton.leadingAnchor
+        // 约束：文字模式时相对于 sendButton，语音模式时相对于父视图右边
         toggleButton.setImage(UIImage(systemName: "mic.fill"), for: .normal)
         toggleButton.tintColor = .systemBlue
         toggleButton.translatesAutoresizingMaskIntoConstraints = false
         toggleButton.addTarget(self, action: #selector(toggleInputMode), for: .touchUpInside)
         addSubview(toggleButton)
 
+        // 两套 trailing 约束：文字模式用第一个，语音模式用第二个
+        toggleTrailingToSendButton = toggleButton.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -8)
+        toggleTrailingToSuperview = toggleButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12)
+
         NSLayoutConstraint.activate([
-            toggleButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            toggleTrailingToSendButton,  // 初始为文字模式，激活相对于 sendButton 的约束
             toggleButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
             toggleButton.widthAnchor.constraint(equalToConstant: 32),
             toggleButton.heightAnchor.constraint(equalToConstant: 32),
@@ -137,18 +177,6 @@ final class ChatInputView: UIView {
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
         textView.addSubview(placeholderLabel)
 
-        sendButton.setTitle("发送", for: .normal)
-        sendButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
-        sendButton.isEnabled = false
-        sendButton.alpha = 0.4
-        sendButton.translatesAutoresizingMaskIntoConstraints = false
-        sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
-        // 注意：必须同时设置 hugging + compressionResistance 为 required，
-        // 否则 textView 宽度增长时会将发送按钮压缩至零宽
-        sendButton.setContentHuggingPriority(.required, for: .horizontal)
-        sendButton.setContentCompressionResistancePriority(.required, for: .horizontal)
-        addSubview(sendButton)
-
         // textView 的 top/bottom 同时约束到 ChatInputView，负责撑开整体高度；
         // textViewHeightConstraint 控制单行到多行的增长，与 top/bottom 共同作用
         textViewHeightConstraint = textView.heightAnchor.constraint(equalToConstant: 36)
@@ -156,7 +184,7 @@ final class ChatInputView: UIView {
         textViewBottomConstraint = textView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10)
 
         NSLayoutConstraint.activate([
-            textView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            textView.leadingAnchor.constraint(equalTo: extensionButton.trailingAnchor, constant: 8),
             textViewTopConstraint,
             textViewBottomConstraint,
             textViewHeightConstraint,
@@ -167,9 +195,7 @@ final class ChatInputView: UIView {
             placeholderLabel.leadingAnchor.constraint(equalTo: textView.leadingAnchor,
                                                        constant: textView.textContainerInset.left + 4),
 
-            sendButton.leadingAnchor.constraint(equalTo: textView.trailingAnchor, constant: 8),
-            sendButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -8),
-            sendButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            textView.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -8),
         ])
 
         // ── 语音模式："按住说话"按钮（初始隐藏）────────────────────────────
@@ -192,7 +218,7 @@ final class ChatInputView: UIView {
 
         // 语音模式的 top/bottom/height 初始不激活，切换时再启用
         NSLayoutConstraint.activate([
-            voiceInputButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            voiceInputButton.leadingAnchor.constraint(equalTo: extensionButton.trailingAnchor, constant: 8),
             voiceInputButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -8),
         ])
 
@@ -220,6 +246,9 @@ final class ChatInputView: UIView {
             voiceBottomConstraint.isActive = true
             voiceHeightConstraint.isActive = true
             voiceInputButton.isHidden = false
+            // 切换 toggleButton 约束：停用相对于 sendButton，启用相对于父视图
+            toggleTrailingToSendButton.isActive = false
+            toggleTrailingToSuperview.isActive = true
             toggleButton.setImage(UIImage(systemName: "keyboard"), for: .normal)
             UIView.animate(withDuration: 0.15) {
                 self.layoutIfNeeded()
@@ -237,6 +266,9 @@ final class ChatInputView: UIView {
             textViewBottomConstraint.isActive = true
             textView.isHidden = false
             sendButton.isHidden = false
+            // 切换 toggleButton 约束：停用相对于父视图，启用相对于 sendButton
+            toggleTrailingToSuperview.isActive = false
+            toggleTrailingToSendButton.isActive = true
             toggleButton.setImage(UIImage(systemName: "mic.fill"), for: .normal)
             textView.becomeFirstResponder()
             UIView.animate(withDuration: 0.15) {
@@ -269,6 +301,12 @@ final class ChatInputView: UIView {
 
     @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
         onLongPress?(gesture)
+    }
+
+    // MARK: - 扩展功能按钮
+
+    @objc private func extensionTapped() {
+        onExtensionTap?()
     }
 
     // MARK: - 外部接口

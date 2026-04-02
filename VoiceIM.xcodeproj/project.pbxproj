@@ -7,46 +7,54 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		073E52EDA48F57C817AEFF7C /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90CCA3FBF8E477BD57BD727 /* SceneDelegate.swift */; };
-		25F8FFE021C4B4A90DF76D36 /* MessageCellConfigurable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9F3A1E256650D246500A68E /* MessageCellConfigurable.swift */; };
-		27683E55BC9D786AE2E5B5E6 /* TextMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88CCD6C493430571B262638D /* TextMessageCell.swift */; };
-		46F7EEB4B5859BEE7DC49804 /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DFBB50BD4826E4E6D73078D /* ToastView.swift */; };
-		4C30FD63860DD642F53B78D8 /* VoiceChatViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723663033617A575C3423C2F /* VoiceChatViewController.swift */; };
-		53C81CEFECD57B7EA1B43D08 /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 823E1656C2A69C2CE9F9F1BB /* AvatarView.swift */; };
-		6226BE708901949D7EC1BA2B /* RecordingOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA566FC8E88C9CC98ACCBE19 /* RecordingOverlayView.swift */; };
-		647F2F236D8CA0BC26CBE4DC /* VoiceCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF347A545B7A1A236ADB531D /* VoiceCacheManager.swift */; };
+		24BF94103557B449A3C24E9A /* Sender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B116B70AF463441C99E8D91 /* Sender.swift */; };
+		409B209AD52A4EDCD0A27FE1 /* ChatInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C1A232CA48A0E6F22AA66D /* ChatInputView.swift */; };
+		46522896B13ECD134635D330 /* ChatBubbleCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580F9DF67CE812B7B1D9174E /* ChatBubbleCell.swift */; };
+		533804A0E73FC812CE52CE82 /* TextMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7963A3657B5E3479294769C9 /* TextMessageCell.swift */; };
+		59BB19A94B08CB85491B1763 /* ImageMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7550DBAF19AB636AAE64D95 /* ImageMessageCell.swift */; };
+		5AC262B68FC83A3946031BC8 /* ImagePreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8752F520CC3796FAD778D37 /* ImagePreviewViewController.swift */; };
+		5E541295513E031D034FBEFA /* MessageCellConfigurable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B908CF76DFF91D292CF9D28 /* MessageCellConfigurable.swift */; };
 		6A6495CF5DA4CE57A952589D /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 99648386B953F022B1C8BB44 /* Launch Screen.storyboard */; };
-		725BE06B150B53B3ED8C688E /* VoiceRecordManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F41F0A46908331582861C001 /* VoiceRecordManager.swift */; };
-		74EFD26EA6213DE7246C266E /* VoicePlaybackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E3E86A4018F9AD5C4752EC1 /* VoicePlaybackManager.swift */; };
-		9AD94B04CE55D3ADCE9A661D /* ChatBubbleCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F46790F402C57E32D0F59E /* ChatBubbleCell.swift */; };
-		A38F3DC2E33EA65CC7CC25C3 /* VoiceMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5598E92C49B4AFDEBBF9ABD /* VoiceMessageCell.swift */; };
-		A4F4B031B5D304100DBEE819 /* RecordingOverlayViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83AF38875AAC15E6DDD0CD5C /* RecordingOverlayViewController.swift */; };
-		CA8F179F0C05362D1D47A8B3 /* Sender.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF5EAAE8DEBEE9CC412C546 /* Sender.swift */; };
-		D20CA357C52671211BAC322E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C46C5B588FB0FB03FC2E4F5 /* AppDelegate.swift */; };
-		DD67BA77CB031567ACB690F0 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA60A2B83B3AFDF7BC339CE9 /* ChatMessage.swift */; };
-		E33EAF93920D0C7754364DAF /* ChatInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED324E0D0BCF9956077EC3AC /* ChatInputView.swift */; };
+		6DB6FE9AE673B5E761C7C573 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C33B6D976E32FDCBC0C4AB /* SceneDelegate.swift */; };
+		7E05D6411412ADE53D0254C1 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C43A131A4DC21A7C2E8C9EE7 /* AppDelegate.swift */; };
+		8A947BBF93712FDD90728DB0 /* RecordingOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A96823CA98EECA4A9BAE481 /* RecordingOverlayView.swift */; };
+		9064A4FA4C611889E6B63660 /* VoiceRecordManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A967190F25C5BC5A20D26504 /* VoiceRecordManager.swift */; };
+		B2C9C2ECDB27C52AA5722E6D /* VoiceChatViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6594EF1C574D7F8BD27AE522 /* VoiceChatViewController.swift */; };
+		C4E3095021C37BCD567D3BF5 /* VideoMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B09AF217DB14CB120A07C7F /* VideoMessageCell.swift */; };
+		CC55D3F85D195A6DEDB6D751 /* RecordingOverlayViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5615CDCD271D478590753D54 /* RecordingOverlayViewController.swift */; };
+		E258B0AB713F285946F96ADD /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F667E00C71EC1040F986296 /* ChatMessage.swift */; };
+		E289BE59A9EA8014C4BE7528 /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A65EF135BBB2C5382358B2 /* ToastView.swift */; };
+		E825D6F4B30B4E95FF522FF4 /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFCC304D89886AC491481403 /* AvatarView.swift */; };
+		E88B71BEB5FE02BA09B5A5EA /* VoiceCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D17C9EF84D9F9D362B6F77 /* VoiceCacheManager.swift */; };
+		F4A6E468A156537796514EDC /* VoicePlaybackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BC1FC5AAE41BCD72109909 /* VoicePlaybackManager.swift */; };
+		F901AD5E56E58DD38057C272 /* VideoPreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4635A7056BFF4341E1D56C4 /* VideoPreviewViewController.swift */; };
+		FBA1ED01242B2F2D95390967 /* VoiceMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41488FDE0AC88B7E19F6DDA5 /* VoiceMessageCell.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		06F46790F402C57E32D0F59E /* ChatBubbleCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBubbleCell.swift; sourceTree = "<group>"; };
-		1C46C5B588FB0FB03FC2E4F5 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		3E3E86A4018F9AD5C4752EC1 /* VoicePlaybackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePlaybackManager.swift; sourceTree = "<group>"; };
-		5DFBB50BD4826E4E6D73078D /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
-		723663033617A575C3423C2F /* VoiceChatViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceChatViewController.swift; sourceTree = "<group>"; };
-		823E1656C2A69C2CE9F9F1BB /* AvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarView.swift; sourceTree = "<group>"; };
-		83AF38875AAC15E6DDD0CD5C /* RecordingOverlayViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverlayViewController.swift; sourceTree = "<group>"; };
-		88CCD6C493430571B262638D /* TextMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextMessageCell.swift; sourceTree = "<group>"; };
+		0B116B70AF463441C99E8D91 /* Sender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sender.swift; sourceTree = "<group>"; };
+		2B09AF217DB14CB120A07C7F /* VideoMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoMessageCell.swift; sourceTree = "<group>"; };
+		41488FDE0AC88B7E19F6DDA5 /* VoiceMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageCell.swift; sourceTree = "<group>"; };
+		5615CDCD271D478590753D54 /* RecordingOverlayViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverlayViewController.swift; sourceTree = "<group>"; };
+		580F9DF67CE812B7B1D9174E /* ChatBubbleCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBubbleCell.swift; sourceTree = "<group>"; };
+		5F667E00C71EC1040F986296 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
+		60A65EF135BBB2C5382358B2 /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
+		6594EF1C574D7F8BD27AE522 /* VoiceChatViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceChatViewController.swift; sourceTree = "<group>"; };
+		6A96823CA98EECA4A9BAE481 /* RecordingOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverlayView.swift; sourceTree = "<group>"; };
+		7963A3657B5E3479294769C9 /* TextMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextMessageCell.swift; sourceTree = "<group>"; };
+		84D17C9EF84D9F9D362B6F77 /* VoiceCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCacheManager.swift; sourceTree = "<group>"; };
+		87C1A232CA48A0E6F22AA66D /* ChatInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputView.swift; sourceTree = "<group>"; };
+		8B908CF76DFF91D292CF9D28 /* MessageCellConfigurable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageCellConfigurable.swift; sourceTree = "<group>"; };
 		99648386B953F022B1C8BB44 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
-		A9F3A1E256650D246500A68E /* MessageCellConfigurable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageCellConfigurable.swift; sourceTree = "<group>"; };
-		AA60A2B83B3AFDF7BC339CE9 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
-		BA566FC8E88C9CC98ACCBE19 /* RecordingOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverlayView.swift; sourceTree = "<group>"; };
-		BF347A545B7A1A236ADB531D /* VoiceCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCacheManager.swift; sourceTree = "<group>"; };
-		C90CCA3FBF8E477BD57BD727 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
-		C965731AD4227230ADCB2E2C /* VoiceIM.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceIM.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		E5598E92C49B4AFDEBBF9ABD /* VoiceMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageCell.swift; sourceTree = "<group>"; };
-		ECF5EAAE8DEBEE9CC412C546 /* Sender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sender.swift; sourceTree = "<group>"; };
-		ED324E0D0BCF9956077EC3AC /* ChatInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputView.swift; sourceTree = "<group>"; };
-		F41F0A46908331582861C001 /* VoiceRecordManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecordManager.swift; sourceTree = "<group>"; };
+		A967190F25C5BC5A20D26504 /* VoiceRecordManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecordManager.swift; sourceTree = "<group>"; };
+		B9BC1FC5AAE41BCD72109909 /* VoicePlaybackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePlaybackManager.swift; sourceTree = "<group>"; };
+		C0C33B6D976E32FDCBC0C4AB /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		C43A131A4DC21A7C2E8C9EE7 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C965731AD4227230ADCB2E2C /* VoiceIM.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VoiceIM.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D8752F520CC3796FAD778D37 /* ImagePreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewViewController.swift; sourceTree = "<group>"; };
+		DFCC304D89886AC491481403 /* AvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarView.swift; sourceTree = "<group>"; };
+		F4635A7056BFF4341E1D56C4 /* VideoPreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPreviewViewController.swift; sourceTree = "<group>"; };
+		F7550DBAF19AB636AAE64D95 /* ImageMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageMessageCell.swift; sourceTree = "<group>"; };
 		FE150653DE97068F4C160094 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -54,25 +62,15 @@
 		10D4A6F6E4CD6881759AE829 /* VoiceIM */ = {
 			isa = PBXGroup;
 			children = (
-				1C46C5B588FB0FB03FC2E4F5 /* AppDelegate.swift */,
-				823E1656C2A69C2CE9F9F1BB /* AvatarView.swift */,
-				06F46790F402C57E32D0F59E /* ChatBubbleCell.swift */,
-				ED324E0D0BCF9956077EC3AC /* ChatInputView.swift */,
-				AA60A2B83B3AFDF7BC339CE9 /* ChatMessage.swift */,
 				FE150653DE97068F4C160094 /* Info.plist */,
 				99648386B953F022B1C8BB44 /* Launch Screen.storyboard */,
-				A9F3A1E256650D246500A68E /* MessageCellConfigurable.swift */,
-				BA566FC8E88C9CC98ACCBE19 /* RecordingOverlayView.swift */,
-				83AF38875AAC15E6DDD0CD5C /* RecordingOverlayViewController.swift */,
-				C90CCA3FBF8E477BD57BD727 /* SceneDelegate.swift */,
-				ECF5EAAE8DEBEE9CC412C546 /* Sender.swift */,
-				88CCD6C493430571B262638D /* TextMessageCell.swift */,
-				5DFBB50BD4826E4E6D73078D /* ToastView.swift */,
-				BF347A545B7A1A236ADB531D /* VoiceCacheManager.swift */,
-				723663033617A575C3423C2F /* VoiceChatViewController.swift */,
-				E5598E92C49B4AFDEBBF9ABD /* VoiceMessageCell.swift */,
-				3E3E86A4018F9AD5C4752EC1 /* VoicePlaybackManager.swift */,
-				F41F0A46908331582861C001 /* VoiceRecordManager.swift */,
+				CA720A09A2BCBAB6917D507F /* App */,
+				596107F88249179BAF813CB3 /* Cells */,
+				AF20DE62EC9FE085C883BBF6 /* Managers */,
+				99B7D3FCB99814169B31D5EF /* Models */,
+				8DCD7F4E87C85285780AA3BF /* Protocols */,
+				AA0116E4300FA05588E69EE4 /* ViewControllers */,
+				ED0F7CF1551C46492656F7E6 /* Views */,
 			);
 			path = VoiceIM;
 			sourceTree = "<group>";
@@ -85,12 +83,82 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		596107F88249179BAF813CB3 /* Cells */ = {
+			isa = PBXGroup;
+			children = (
+				580F9DF67CE812B7B1D9174E /* ChatBubbleCell.swift */,
+				F7550DBAF19AB636AAE64D95 /* ImageMessageCell.swift */,
+				7963A3657B5E3479294769C9 /* TextMessageCell.swift */,
+				2B09AF217DB14CB120A07C7F /* VideoMessageCell.swift */,
+				41488FDE0AC88B7E19F6DDA5 /* VoiceMessageCell.swift */,
+			);
+			path = Cells;
+			sourceTree = "<group>";
+		};
+		8DCD7F4E87C85285780AA3BF /* Protocols */ = {
+			isa = PBXGroup;
+			children = (
+				8B908CF76DFF91D292CF9D28 /* MessageCellConfigurable.swift */,
+			);
+			path = Protocols;
+			sourceTree = "<group>";
+		};
+		99B7D3FCB99814169B31D5EF /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				5F667E00C71EC1040F986296 /* ChatMessage.swift */,
+				0B116B70AF463441C99E8D91 /* Sender.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		AA0116E4300FA05588E69EE4 /* ViewControllers */ = {
+			isa = PBXGroup;
+			children = (
+				D8752F520CC3796FAD778D37 /* ImagePreviewViewController.swift */,
+				5615CDCD271D478590753D54 /* RecordingOverlayViewController.swift */,
+				F4635A7056BFF4341E1D56C4 /* VideoPreviewViewController.swift */,
+				6594EF1C574D7F8BD27AE522 /* VoiceChatViewController.swift */,
+			);
+			path = ViewControllers;
+			sourceTree = "<group>";
+		};
+		AF20DE62EC9FE085C883BBF6 /* Managers */ = {
+			isa = PBXGroup;
+			children = (
+				84D17C9EF84D9F9D362B6F77 /* VoiceCacheManager.swift */,
+				B9BC1FC5AAE41BCD72109909 /* VoicePlaybackManager.swift */,
+				A967190F25C5BC5A20D26504 /* VoiceRecordManager.swift */,
+			);
+			path = Managers;
+			sourceTree = "<group>";
+		};
 		C48617F43C302802FC9B8DD1 = {
 			isa = PBXGroup;
 			children = (
 				10D4A6F6E4CD6881759AE829 /* VoiceIM */,
 				3DB0272EC851605F37F003E5 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		CA720A09A2BCBAB6917D507F /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C43A131A4DC21A7C2E8C9EE7 /* AppDelegate.swift */,
+				C0C33B6D976E32FDCBC0C4AB /* SceneDelegate.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		ED0F7CF1551C46492656F7E6 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				DFCC304D89886AC491481403 /* AvatarView.swift */,
+				87C1A232CA48A0E6F22AA66D /* ChatInputView.swift */,
+				6A96823CA98EECA4A9BAE481 /* RecordingOverlayView.swift */,
+				60A65EF135BBB2C5382358B2 /* ToastView.swift */,
+			);
+			path = Views;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -163,23 +231,27 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D20CA357C52671211BAC322E /* AppDelegate.swift in Sources */,
-				53C81CEFECD57B7EA1B43D08 /* AvatarView.swift in Sources */,
-				9AD94B04CE55D3ADCE9A661D /* ChatBubbleCell.swift in Sources */,
-				E33EAF93920D0C7754364DAF /* ChatInputView.swift in Sources */,
-				DD67BA77CB031567ACB690F0 /* ChatMessage.swift in Sources */,
-				25F8FFE021C4B4A90DF76D36 /* MessageCellConfigurable.swift in Sources */,
-				6226BE708901949D7EC1BA2B /* RecordingOverlayView.swift in Sources */,
-				A4F4B031B5D304100DBEE819 /* RecordingOverlayViewController.swift in Sources */,
-				073E52EDA48F57C817AEFF7C /* SceneDelegate.swift in Sources */,
-				CA8F179F0C05362D1D47A8B3 /* Sender.swift in Sources */,
-				27683E55BC9D786AE2E5B5E6 /* TextMessageCell.swift in Sources */,
-				46F7EEB4B5859BEE7DC49804 /* ToastView.swift in Sources */,
-				647F2F236D8CA0BC26CBE4DC /* VoiceCacheManager.swift in Sources */,
-				4C30FD63860DD642F53B78D8 /* VoiceChatViewController.swift in Sources */,
-				A38F3DC2E33EA65CC7CC25C3 /* VoiceMessageCell.swift in Sources */,
-				74EFD26EA6213DE7246C266E /* VoicePlaybackManager.swift in Sources */,
-				725BE06B150B53B3ED8C688E /* VoiceRecordManager.swift in Sources */,
+				7E05D6411412ADE53D0254C1 /* AppDelegate.swift in Sources */,
+				E825D6F4B30B4E95FF522FF4 /* AvatarView.swift in Sources */,
+				46522896B13ECD134635D330 /* ChatBubbleCell.swift in Sources */,
+				409B209AD52A4EDCD0A27FE1 /* ChatInputView.swift in Sources */,
+				E258B0AB713F285946F96ADD /* ChatMessage.swift in Sources */,
+				59BB19A94B08CB85491B1763 /* ImageMessageCell.swift in Sources */,
+				5AC262B68FC83A3946031BC8 /* ImagePreviewViewController.swift in Sources */,
+				5E541295513E031D034FBEFA /* MessageCellConfigurable.swift in Sources */,
+				8A947BBF93712FDD90728DB0 /* RecordingOverlayView.swift in Sources */,
+				CC55D3F85D195A6DEDB6D751 /* RecordingOverlayViewController.swift in Sources */,
+				6DB6FE9AE673B5E761C7C573 /* SceneDelegate.swift in Sources */,
+				24BF94103557B449A3C24E9A /* Sender.swift in Sources */,
+				533804A0E73FC812CE52CE82 /* TextMessageCell.swift in Sources */,
+				E289BE59A9EA8014C4BE7528 /* ToastView.swift in Sources */,
+				C4E3095021C37BCD567D3BF5 /* VideoMessageCell.swift in Sources */,
+				F901AD5E56E58DD38057C272 /* VideoPreviewViewController.swift in Sources */,
+				E88B71BEB5FE02BA09B5A5EA /* VoiceCacheManager.swift in Sources */,
+				B2C9C2ECDB27C52AA5722E6D /* VoiceChatViewController.swift in Sources */,
+				FBA1ED01242B2F2D95390967 /* VoiceMessageCell.swift in Sources */,
+				F4A6E468A156537796514EDC /* VoicePlaybackManager.swift in Sources */,
+				9064A4FA4C611889E6B63660 /* VoiceRecordManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -231,7 +303,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -250,9 +322,8 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = R75LFWU52W;
 				INFOPLIST_FILE = VoiceIM/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -271,9 +342,8 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = R75LFWU52W;
 				INFOPLIST_FILE = VoiceIM/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -336,7 +406,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

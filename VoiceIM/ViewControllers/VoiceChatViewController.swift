@@ -1,7 +1,8 @@
 import UIKit
 import AVFoundation
+import PhotosUI
 
-/// IM 聊天页面（支持语音消息与文本消息）
+/// IM 聊天页面（支持语音消息、文本消息、图片消息和视频消息）
 final class VoiceChatViewController: UIViewController {
 
     // MARK: - 常量
@@ -118,6 +119,8 @@ final class VoiceChatViewController: UIViewController {
         // 注册所有消息 Cell 类型；新增类型时在此追加一行即可
         VoiceMessageCell.register(in: collectionView)
         TextMessageCell.register(in: collectionView)
+        ImageMessageCell.register(in: collectionView)
+        VideoMessageCell.register(in: collectionView)
         view.addSubview(collectionView)
 
         // DiffableDataSource
@@ -147,13 +150,23 @@ final class VoiceChatViewController: UIViewController {
             let deps = MessageCellDependencies(
                 isPlaying: self.player.isPlaying(id:),
                 showTimeHeader: showTime,
-                voiceDelegate: self)
+                voiceDelegate: self,
+                imageDelegate: self,
+                videoDelegate: self)
 
             // Kind.reuseID 与注册时保持一致，强转安全
             let cell = cv.dequeueReusableCell(
                 withReuseIdentifier: current.kind.reuseID,
                 for: indexPath)
             (cell as! any MessageCellConfigurable).configure(with: current, deps: deps)  // swiftlint:disable:this force_cast
+
+            // 设置重试按钮回调（仅 ChatBubbleCell 及其子类需要）
+            if let bubbleCell = cell as? ChatBubbleCell {
+                bubbleCell.onRetryTap = { [weak self] in
+                    self?.retryMessage(id: current.id)
+                }
+            }
+
             return cell
         }
 
@@ -223,6 +236,43 @@ final class VoiceChatViewController: UIViewController {
                 at: IndexPath(item: messages.count - 1, section: 0),
                 at: .bottom, animated: true)
         }
+
+        // 扩展功能按钮点击（类似 iMessage 的 + 按钮）
+        chatInputView.onExtensionTap = { [weak self] in
+            self?.handleExtensionTap()
+        }
+    }
+
+    /// 处理扩展功能按钮点击
+    private func handleExtensionTap() {
+        let alert = UIAlertController(title: "扩展功能", message: "选择一个功能", preferredStyle: .actionSheet)
+
+        alert.addAction(UIAlertAction(title: "相册", style: .default) { [weak self] _ in
+            self?.openPhotoPicker()
+        })
+
+        alert.addAction(UIAlertAction(title: "拍照", style: .default) { [weak self] _ in
+            ToastView.show("拍照功能开发中", in: self?.view ?? UIView())
+        })
+
+        alert.addAction(UIAlertAction(title: "位置", style: .default) { [weak self] _ in
+            ToastView.show("位置功能开发中", in: self?.view ?? UIView())
+        })
+
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+
+        present(alert, animated: true)
+    }
+
+    /// 打开系统相册选择器
+    private func openPhotoPicker() {
+        var config = PHPickerConfiguration()
+        config.selectionLimit = 1
+        config.filter = .any(of: [.images, .videos])
+
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = self
+        present(picker, animated: true)
     }
 
     private func setupPlaybackCallbacks() {
@@ -432,6 +482,101 @@ final class VoiceChatViewController: UIViewController {
                 at: IndexPath(item: messages.count - 1, section: 0),
                 at: .bottom, animated: true)
         }
+
+        // 模拟发送：自己发送的消息需要模拟网络发送过程
+        if message.isOutgoing {
+            simulateSendMessage(id: message.id)
+        }
+    }
+
+    /// 模拟消息发送过程（开发阶段使用，生产环境替换为真实网络请求）
+    ///
+    /// # 模拟逻辑
+    /// - 延迟 1-2 秒模拟网络请求
+    /// - 70% 成功率（状态变为 `.delivered`）
+    /// - 30% 失败率（状态变为 `.failed`，可点击重试）
+    ///
+    /// # 状态更新机制
+    /// 通过修改 `messages` 数组中的 `sendStatus` 字段，然后调用 `snapshot.reloadItems` 触发 cell 重新配置。
+    /// 这与 `isPlayed` 更新策略一致，详见 `ChatMessage.swift` 中的 Hashable 设计说明。
+    private func simulateSendMessage(id: UUID) {
+        // 模拟网络延迟 1-2 秒
+        let delay = Double.random(in: 1.0...2.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            guard let idx = self.messages.firstIndex(where: { $0.id == id }) else { return }
+
+            // 70% 成功率
+            let success = Double.random(in: 0...1) < 0.7
+            self.messages[idx].sendStatus = success ? .delivered : .failed
+
+            var snapshot = self.dataSource.snapshot()
+            snapshot.reloadItems([self.messages[idx]])
+            self.dataSource.apply(snapshot, animatingDifferences: false)
+        }
+    }
+
+    /// 重试发送失败的消息：删除失败的消息，然后根据消息内容重新发送一份
+    ///
+    /// # 重试流程
+    /// 1. 验证消息存在且状态为 `.failed`
+    /// 2. 从列表中删除失败的消息（带删除动画）
+    /// 3. 根据消息类型重新创建新消息：
+    ///    - 语音消息：使用原 `localURL` 重新发送（若文件丢失则提示用户）
+    ///    - 文本消息：使用原文本内容重新发送
+    /// 4. 调用 `appendMessage` 将新消息追加到列表底部，自动触发 `simulateSendMessage`
+    ///
+    /// # 设计考量
+    /// 采用"删除 + 重新发送"而非"原地更新状态"的原因：
+    /// - 符合常见 IM 应用的交互习惯（重试后消息出现在列表底部）
+    /// - 避免时间戳混乱（失败消息的 `sentAt` 可能是几分钟前，重试后应显示当前时间）
+    /// - 简化状态管理（新消息有新 ID，不会与旧消息的播放状态等产生冲突）
+    private func retryMessage(id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }),
+              messages[idx].sendStatus == .failed else { return }
+
+        let failedMessage = messages[idx]
+
+        // 先删除失败的消息
+        messages.remove(at: idx)
+        var snapshot = dataSource.snapshot()
+        snapshot.deleteItems([failedMessage])
+        dataSource.apply(snapshot, animatingDifferences: true)
+
+        // 根据消息类型重新创建并发送
+        let newMessage: ChatMessage
+        switch failedMessage.kind {
+        case .voice(let localURL, _, let duration):
+            // 语音消息：使用原来的本地文件重新发送
+            if let url = localURL {
+                newMessage = .voice(localURL: url, duration: duration, sentAt: Date())
+            } else {
+                ToastView.show("无法重试：原始文件已丢失", in: view)
+                return
+            }
+        case .text(let content):
+            // 文本消息：使用原来的文本内容重新发送
+            newMessage = .text(content, sender: .me, sentAt: Date())
+        case .image(let localURL, _):
+            // 图片消息：使用原来的本地文件重新发送
+            if let url = localURL {
+                newMessage = .image(localURL: url, sentAt: Date())
+            } else {
+                ToastView.show("无法重试：原始文件已丢失", in: view)
+                return
+            }
+        case .video(let localURL, _, let duration):
+            // 视频消息：使用原来的本地文件重新发送
+            if let url = localURL {
+                newMessage = .video(localURL: url, duration: duration, sentAt: Date())
+            } else {
+                ToastView.show("无法重试：原始文件已丢失", in: view)
+                return
+            }
+        }
+
+        // 追加新消息并触发发送
+        appendMessage(newMessage)
     }
 
     /// UIRefreshControl 触发回调（用户在列表顶部下拉时调用）。
@@ -635,6 +780,95 @@ extension VoiceChatViewController: VoiceMessageCellDelegate {
         })
         sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
         present(sheet, animated: true)
+    }
+}
+
+// MARK: - ImageMessageCellDelegate
+
+extension VoiceChatViewController: ImageMessageCellDelegate {
+
+    func cellDidTapImage(_ cell: ImageMessageCell, message: ChatMessage) {
+        guard case .image(let localURL, let remoteURL) = message.kind,
+              let imageURL = localURL ?? remoteURL else { return }
+
+        let previewVC = ImagePreviewViewController(imageURL: imageURL)
+        present(previewVC, animated: true)
+    }
+}
+
+// MARK: - VideoMessageCellDelegate
+
+extension VoiceChatViewController: VideoMessageCellDelegate {
+
+    func cellDidTapVideo(_ cell: VideoMessageCell, message: ChatMessage) {
+        guard case .video(let localURL, let remoteURL, _) = message.kind,
+              let videoURL = localURL ?? remoteURL else { return }
+
+        let previewVC = VideoPreviewViewController(videoURL: videoURL)
+        present(previewVC, animated: true)
+    }
+}
+
+// MARK: - PHPickerViewControllerDelegate
+
+extension VoiceChatViewController: PHPickerViewControllerDelegate {
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+
+        guard let result = results.first else { return }
+
+        let itemProvider = result.itemProvider
+
+        // 检查是否为图片
+        if itemProvider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { [weak self] url, error in
+                guard let self, let url = url, error == nil else { return }
+
+                // 复制到临时目录
+                let tempURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension(url.pathExtension)
+
+                do {
+                    try FileManager.default.copyItem(at: url, to: tempURL)
+                    DispatchQueue.main.async {
+                        self.appendMessage(.image(localURL: tempURL))
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        ToastView.show("图片加载失败", in: self.view)
+                    }
+                }
+            }
+        }
+        // 检查是否为视频
+        else if itemProvider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+            itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { [weak self] url, error in
+                guard let self, let url = url, error == nil else { return }
+
+                // 复制到临时目录
+                let tempURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension(url.pathExtension)
+
+                do {
+                    try FileManager.default.copyItem(at: url, to: tempURL)
+
+                    // 获取视频时长
+                    let asset = AVAsset(url: tempURL)
+                    let duration = asset.duration.seconds
+
+                    DispatchQueue.main.async {
+                        self.appendMessage(.video(localURL: tempURL, duration: duration))
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        ToastView.show("视频加载失败", in: self.view)
+                    }
+                }
+            }
+        }
     }
 }
 

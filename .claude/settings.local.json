@@ -3,7 +3,16 @@
     "allow": [
       "Bash(xcodebuild -project VoiceIM.xcodeproj -scheme VoiceIM -destination \"generic/platform=iOS Simulator\" -configuration Debug CODE_SIGNING_ALLOWED=NO build)",
       "Bash(xcodegen generate:*)",
-      "Bash(xcodebuild:*)"
+      "Bash(xcodebuild:*)",
+      "Bash(ls -la VoiceIM/VoiceIM/*.swift)",
+      "Bash(ls -la VoiceIM/*.swift)",
+      "Bash(ls:*)",
+      "Bash(mv ChatMessage.swift Models/)",
+      "Bash(mv Sender.swift Models/)",
+      "Bash(mv AvatarView.swift Views/)",
+      "Bash(mv ChatInputView.swift Views/)",
+      "Bash(mv RecordingOverlayView.swift Views/)",
+      "Bash(git add:*)"
     ]
   }
 }

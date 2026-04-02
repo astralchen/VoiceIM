@@ -18,6 +18,17 @@ class ChatBubbleCell: UICollectionViewCell {
     /// 气泡容器；子类将自己的内容视图添加到此视图内
     let bubble = UIView()
 
+    // MARK: - 状态指示器（消息发送状态展示）
+
+    /// 发送中状态指示器：旋转的加载动画，仅在 `.sending` 状态时显示
+    let statusIndicator = UIActivityIndicatorView(style: .medium)
+
+    /// 发送失败按钮：红色感叹号图标，仅在 `.failed` 状态时显示，可点击重试
+    let failedButton = UIButton(type: .system)
+
+    /// 失败按钮点击回调：由 ViewController 在 cell provider 中设置，触发重试逻辑
+    var onRetryTap: (() -> Void)?
+
     // MARK: - 动态约束
 
     /// 控制 timeLabel 高度（0 = 隐藏且不占高，28 = 显示）
@@ -66,6 +77,19 @@ class ChatBubbleCell: UICollectionViewCell {
         bubble.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(bubble)
 
+        // 状态指示器（发送中）
+        statusIndicator.hidesWhenStopped = true
+        statusIndicator.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(statusIndicator)
+
+        // 发送失败按钮：点击触发重试逻辑
+        failedButton.setImage(UIImage(systemName: "exclamationmark.circle.fill"), for: .normal)
+        failedButton.tintColor = .systemRed
+        failedButton.isHidden = true
+        failedButton.translatesAutoresizingMaskIntoConstraints = false
+        failedButton.addTarget(self, action: #selector(failedButtonTapped), for: .touchUpInside)
+        contentView.addSubview(failedButton)
+
         // 注意：timeHeightConstraint 初始值为 0，与 isHidden 配合使用。
         // 仅设置 isHidden = true 无法折叠高度——AutoLayout 仍会为隐藏视图保留空间；
         // 必须同时将高度约束改为 0，才能让 cell 高度随之收缩，不留空白。
@@ -91,6 +115,16 @@ class ChatBubbleCell: UICollectionViewCell {
             bubble.widthAnchor.constraint(greaterThanOrEqualToConstant: 50),
             // 最大宽度 65%，为头像（36pt）+ 两侧边距（各 8pt）共 52pt 留出空间
             bubble.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.65),
+
+            // 状态指示器：位于气泡左侧（发送方消息）
+            statusIndicator.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
+            statusIndicator.widthAnchor.constraint(equalToConstant: 20),
+            statusIndicator.heightAnchor.constraint(equalToConstant: 20),
+
+            // 发送失败按钮：位于气泡左侧（发送方消息）
+            failedButton.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
+            failedButton.widthAnchor.constraint(equalToConstant: 24),
+            failedButton.heightAnchor.constraint(equalToConstant: 24),
         ])
 
         // 注意：两套方向约束在 init 时只构建、不激活。
@@ -104,11 +138,13 @@ class ChatBubbleCell: UICollectionViewCell {
             bubble.leadingAnchor.constraint(equalTo: avatarView.trailingAnchor, constant: 8),
         ]
 
-        // 发（靠右）方向约束：头像在右，气泡在头像左侧
+        // 发（靠右）方向约束：头像在右，气泡在头像左侧，状态指示器在气泡左侧
         outgoingConstraints = [
             avatarView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
             avatarView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor),
             bubble.trailingAnchor.constraint(equalTo: avatarView.leadingAnchor, constant: -8),
+            statusIndicator.trailingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: -8),
+            failedButton.trailingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: -8),
         ]
     }
 
@@ -144,6 +180,33 @@ class ChatBubbleCell: UICollectionViewCell {
         bubble.backgroundColor = message.isOutgoing
             ? UIColor.systemBlue.withAlphaComponent(0.15)
             : UIColor.systemGray5
+
+        // MARK: 状态指示器更新逻辑
+        //
+        // 仅自己发送的消息（isOutgoing = true）显示状态指示器。
+        // 对方消息不显示任何状态（statusIndicator 停止，failedButton 隐藏）。
+        //
+        // 状态展示规则：
+        // - .sending：显示旋转的加载动画
+        // - .delivered / .read：隐藏所有指示器（暂未实现单勾/双勾 UI）
+        // - .failed：显示红色感叹号按钮，可点击重试
+        if message.isOutgoing {
+            switch message.sendStatus {
+            case .sending:
+                statusIndicator.startAnimating()
+                failedButton.isHidden = true
+            case .delivered, .read:
+                // 已送达、已读状态暂不处理 UI
+                statusIndicator.stopAnimating()
+                failedButton.isHidden = true
+            case .failed:
+                statusIndicator.stopAnimating()
+                failedButton.isHidden = false
+            }
+        } else {
+            statusIndicator.stopAnimating()
+            failedButton.isHidden = true
+        }
     }
 
     // MARK: - 时间格式化
@@ -162,5 +225,11 @@ class ChatBubbleCell: UICollectionViewCell {
             timeFmt.dateFormat = "M月d日 HH:mm"
         }
         return timeFmt.string(from: date)
+    }
+
+    // MARK: - 失败按钮点击
+
+    @objc private func failedButtonTapped() {
+        onRetryTap?()
     }
 }

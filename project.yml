@@ -6,14 +6,14 @@ name: VoiceIM
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
-    iOS: "13.0"
+    iOS: "15.0"
   xcodeVersion: "16.0"
   generateEmptyDirectories: true
 
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    IPHONEOS_DEPLOYMENT_TARGET: "13.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     TARGETED_DEVICE_FAMILY: "1"
     ENABLE_STRICT_OBJC_MSGSEND: YES
 
@@ -21,7 +21,7 @@ targets:
   VoiceIM:
     type: application
     platform: iOS
-    deploymentTarget: "13.0"
+    deploymentTarget: "15.0"
     sources:
       - path: VoiceIM
         excludes:
