@@ -15,6 +15,7 @@ final class RecordingOverlayView: UIView {
 
     /// 录音气泡（波形图标 + 时间计数）
     private let bubbleView        = UIView()
+    private let bubbleStackView   = UIStackView()
     private let waveformImageView = UIImageView()
     private let timeLabel         = UILabel()
 
@@ -27,8 +28,10 @@ final class RecordingOverlayView: UIView {
 
     /// 底部 118pt 渐变舞台
     private let stageView          = UIView()
-    private let bgGradientLayer    = CAGradientLayer()
-    private let stageMaskLayer     = CAShapeLayer()   // 顶部弧形遮罩
+    private let stageFillGradientLayer = CAGradientLayer()
+    private let stageFillMaskLayer     = CAShapeLayer()
+    private let stageStrokeGradientLayer = CAGradientLayer()
+    private let stageStrokeMaskLayer     = CAShapeLayer()
     private let micImageView       = UIImageView()
 
     // MARK: - 初始化
@@ -44,29 +47,29 @@ final class RecordingOverlayView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        bgGradientLayer.frame = stageView.bounds
+        stageFillGradientLayer.frame = stageView.bounds
+        stageStrokeGradientLayer.frame = stageView.bounds
         cancelCircleView.layer.cornerRadius = cancelCircleView.bounds.height / 2
-        updateStageMask()
+        updateStagePath()
     }
 
-    /// 更新顶部弧形 mask：顶边向上凸出一条二次贝塞尔曲线
-    private func updateStageMask() {
-        let w = stageView.bounds.width
-        let h = stageView.bounds.height
-        guard w > 0, h > 0 else { return }
+    /// 使用设计稿 SVG 的 path-3（375x117.816455）按比例缩放到当前舞台尺寸。
+    private func updateStagePath() {
+        let bounds = stageView.bounds
+        guard bounds.width > 0, bounds.height > 0 else { return }
 
-        let arcHeight: CGFloat = 28   // 弧顶比两侧边缘高出的距离
-        let path = UIBezierPath()
-        path.move(to: CGPoint(x: 0, y: arcHeight))
-        // 控制点在顶部中央（y = 0），形成向上凸出的弧形
-        path.addQuadCurve(to: CGPoint(x: w, y: arcHeight),
-                          controlPoint: CGPoint(x: w / 2, y: 0))
-        path.addLine(to: CGPoint(x: w, y: h))
-        path.addLine(to: CGPoint(x: 0, y: h))
-        path.close()
+        let path = makeStagePath(in: bounds)
 
-        stageMaskLayer.path = path.cgPath
-        stageView.layer.mask = stageMaskLayer
+        stageFillMaskLayer.frame = bounds
+        stageFillMaskLayer.path = path.cgPath
+
+        stageStrokeMaskLayer.frame = bounds
+        stageStrokeMaskLayer.path = path.cgPath
+        stageStrokeMaskLayer.fillColor = UIColor.clear.cgColor
+        stageStrokeMaskLayer.strokeColor = UIColor.black.cgColor
+        stageStrokeMaskLayer.lineWidth = 1
+        stageStrokeMaskLayer.lineJoin = .round
+        stageStrokeMaskLayer.lineCap = .round
     }
 
     // MARK: - 搭建
@@ -86,10 +89,17 @@ final class RecordingOverlayView: UIView {
         stageView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stageView)
 
-        bgGradientLayer.startPoint = CGPoint(x: 0.5, y: 1.0)
-        bgGradientLayer.endPoint   = CGPoint(x: 0.5, y: 0.0)
+        stageFillGradientLayer.startPoint = CGPoint(x: 0.5, y: 0.0)
+        stageFillGradientLayer.endPoint   = CGPoint(x: 0.5, y: 1.0)
         applyStageColors(cancelReady: false)
-        stageView.layer.insertSublayer(bgGradientLayer, at: 0)
+        stageFillGradientLayer.mask = stageFillMaskLayer
+        stageView.layer.insertSublayer(stageFillGradientLayer, at: 0)
+
+        // 对应 SVG linearGradient-2，作为路径描边高光
+        stageStrokeGradientLayer.startPoint = CGPoint(x: 0.434104349, y: 0.4458284)
+        stageStrokeGradientLayer.endPoint = CGPoint(x: 0.624221171, y: 0.54935366)
+        stageStrokeGradientLayer.mask = stageStrokeMaskLayer
+        stageView.layer.insertSublayer(stageStrokeGradientLayer, above: stageFillGradientLayer)
 
         let micConfig = UIImage.SymbolConfiguration(pointSize: 36, weight: .regular)
         micImageView.image = UIImage(systemName: "mic.fill", withConfiguration: micConfig)
@@ -112,14 +122,24 @@ final class RecordingOverlayView: UIView {
         waveformImageView.image = UIImage(systemName: "waveform", withConfiguration: waveConfig)
         waveformImageView.tintColor = UIColor(red: 0.45, green: 0.22, blue: 0.75, alpha: 1)
         waveformImageView.contentMode = .scaleAspectFit
-        waveformImageView.translatesAutoresizingMaskIntoConstraints = false
-        bubbleView.addSubview(waveformImageView)
+        waveformImageView.setContentHuggingPriority(.required, for: .vertical)
+        waveformImageView.setContentCompressionResistancePriority(.required, for: .vertical)
 
         timeLabel.text  = "0\""
         timeLabel.font  = .monospacedDigitSystemFont(ofSize: 16, weight: .semibold)
         timeLabel.textColor = .label
-        timeLabel.translatesAutoresizingMaskIntoConstraints = false
-        bubbleView.addSubview(timeLabel)
+        timeLabel.textAlignment = .center
+        timeLabel.setContentHuggingPriority(.required, for: .vertical)
+        timeLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+
+        bubbleStackView.axis = .vertical
+        bubbleStackView.alignment = .center
+        bubbleStackView.distribution = .fill
+        bubbleStackView.spacing = 8
+        bubbleStackView.translatesAutoresizingMaskIntoConstraints = false
+        bubbleStackView.addArrangedSubview(waveformImageView)
+        bubbleStackView.addArrangedSubview(timeLabel)
+        bubbleView.addSubview(bubbleStackView)
 
         bubbleView.backgroundColor = .white
     }
@@ -156,7 +176,7 @@ final class RecordingOverlayView: UIView {
 
             // 麦克风：舞台垂直居中
             micImageView.centerXAnchor.constraint(equalTo: stageView.centerXAnchor),
-            micImageView.centerYAnchor.constraint(equalTo: stageView.centerYAnchor),
+            micImageView.topAnchor.constraint(equalTo:  stageView.topAnchor, constant: 28),
 
             // 提示文字：舞台顶部上方 14pt
             hintLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
@@ -175,14 +195,12 @@ final class RecordingOverlayView: UIView {
             bubbleView.centerXAnchor.constraint(equalTo: centerXAnchor),
             bubbleView.bottomAnchor.constraint(equalTo: cancelCircleView.topAnchor, constant: -20),
 
-            // 气泡内：波形（左）+ 时间（右），上下内边距 16pt
-            waveformImageView.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 20),
-            waveformImageView.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 16),
-            waveformImageView.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -16),
-
-            timeLabel.leadingAnchor.constraint(equalTo: waveformImageView.trailingAnchor, constant: 12),
-            timeLabel.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -20),
-            timeLabel.centerYAnchor.constraint(equalTo: bubbleView.centerYAnchor),
+            // 气泡内：UIKit 版 VStack（上图标、下文本）
+            bubbleStackView.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 12),
+            bubbleStackView.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -12),
+            bubbleStackView.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 20),
+            bubbleStackView.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -20),
+            bubbleStackView.centerXAnchor.constraint(equalTo: bubbleView.centerXAnchor),
         ])
     }
 
@@ -217,15 +235,54 @@ final class RecordingOverlayView: UIView {
 
     private func applyStageColors(cancelReady: Bool) {
         if cancelReady {
-            bgGradientLayer.colors = [
+            stageFillGradientLayer.colors = [
                 UIColor.systemRed.cgColor,
                 UIColor(red: 0.25, green: 0.02, blue: 0.02, alpha: 1).cgColor,
             ]
+            stageStrokeGradientLayer.colors = [
+                UIColor.white.withAlphaComponent(0.30).cgColor,
+                UIColor.white.withAlphaComponent(0).cgColor,
+            ]
         } else {
-            bgGradientLayer.colors = [
-                UIColor(red: 0.38, green: 0.18, blue: 0.65, alpha: 1).cgColor,
-                UIColor(red: 0.07, green: 0.03, blue: 0.16, alpha: 1).cgColor,
+            // 来自设计稿 linearGradient-1 / linearGradient-2
+            stageFillGradientLayer.colors = [
+                UIColor(red: 0.204, green: 0.196, blue: 0.404, alpha: 1).cgColor, // #343267
+                UIColor(red: 0.047, green: 0.094, blue: 0.196, alpha: 1).cgColor, // #0C1832
+            ]
+            stageStrokeGradientLayer.colors = [
+                UIColor(red: 0.871, green: 0.875, blue: 0.894, alpha: 0.7).cgColor, // #DEDFE4 @ 70%
+                UIColor(red: 0.224, green: 0.255, blue: 0.396, alpha: 0).cgColor,   // #394165 @ 0%
             ]
         }
+    }
+
+    private func makeStagePath(in bounds: CGRect) -> UIBezierPath {
+        let designWidth: CGFloat = 375
+        let designHeight: CGFloat = 117.816455
+
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(
+                x: x / designWidth * bounds.width,
+                y: y / designHeight * bounds.height
+            )
+        }
+
+        let path = UIBezierPath()
+        path.move(to: p(0, 59.5320699))
+        path.addLine(to: p(0, 117.816455))
+        path.addLine(to: p(375, 117.816455))
+        path.addLine(to: p(375, 56.5380362))
+        path.addCurve(
+            to: p(194, 0.0343900641),
+            controlPoint1: p(320.333333, 20.594799),
+            controlPoint2: p(260, 1.76025027)
+        )
+        path.addCurve(
+            to: p(0, 59.5320699),
+            controlPoint1: p(123.290266, -0.942431981),
+            controlPoint2: p(58.6235991, 18.890128)
+        )
+        path.close()
+        return path
     }
 }
