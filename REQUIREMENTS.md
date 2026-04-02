@@ -1,6 +1,6 @@
 # IM 语音消息功能需求文档
 
-> 整理自开发会话，最终确认版本。
+> 整理自开发会话，持续更新。
 
 ---
 
@@ -35,17 +35,51 @@
 
 ## 二、消息列表
 
-### 2.1 展示
+### 2.1 消息类型
 
-- 每次发送成功后，消息追加到列表末尾。
-- 列表使用 `UICollectionView`（iOS 13 `UICollectionViewDiffableDataSource` + `UICollectionViewCompositionalLayout`）。
-- 消息气泡靠左展示，显示：播放按钮、时长/剩余时长、进度滑块（播放时显示）、未读红点（未播放时显示）。
+| 类型 | 数据字段 | Cell 类 |
+|------|----------|---------|
+| 语音消息 | `ChatMessage.Kind.voice(localURL:remoteURL:duration:)` | `VoiceMessageCell` |
+| 文本消息 | `ChatMessage.Kind.text(String)` | `TextMessageCell` |
 
-### 2.2 滚动策略
+### 2.2 发送者与方向
 
-- 用户**在底部附近**（距底部 < 60pt）时发送语音：自动滚动到最新消息。
-- 用户**正在浏览历史消息**时发送语音：不滚动，保持当前位置。
+- 每条消息携带 `sender: Sender`（含 `id`、`displayName`）和 `sentAt: Date`。
+- `isOutgoing = sender.id == "me"`，决定气泡靠右（自己）还是靠左（对方）。
+- 头像为 36×36 圆形占位：背景色由 `sender.id` UTF-8 字节求和映射到固定调色板，中心显示 `displayName` 首字母。同一发送者颜色跨 session 保持一致。
+
+### 2.3 时间分隔行
+
+- 规则：与上一条消息的 `sentAt` 间隔 **> 5 分钟**时，在该消息上方显示时间分隔行。
+- 第一条消息始终显示时间分隔行。
+- 时间格式：
+  - 今天：`HH:mm`
+  - 昨天：`昨天 HH:mm`
+  - 更早：`M月d日 HH:mm`
+- 不显示时高度折叠为 0，不留白（`isHidden` + `heightConstraint = 0` 双重保证）。
+
+### 2.4 气泡布局
+
+| 方向 | 头像位置 | 气泡位置 | 气泡背景色 |
+|------|----------|----------|------------|
+| 自己（靠右） | cell 右侧 8pt | 头像左侧 8pt | `systemBlue × 0.15` |
+| 对方（靠左） | cell 左侧 8pt | 头像右侧 8pt | `systemGray5` |
+
+- 气泡最大宽度：contentView 宽度的 **65%**（为头像 36pt + 两侧边距共 52pt 留空间）。
+- 方向切换通过激活/停用两套预构建约束实现，cell 复用时先停用全部再激活目标套，避免约束冲突。
+
+### 2.5 滚动策略
+
+- 用户**在底部附近**（距底部 < 60pt）时发送消息：自动滚动到最新消息。
+- 用户**正在浏览历史消息**时发送消息：不滚动，保持当前位置。
 - 判断公式：`contentSize.height - contentOffset.y - bounds.height + adjustedContentInset.bottom < 60`
+
+### 2.6 下拉加载历史记录
+
+- 在列表顶部下拉触发 `UIRefreshControl`，加载更早的历史消息。
+- 历史消息插入列表头部，**不打断用户当前阅读位置**（`layoutIfNeeded()` 后补偿 `contentOffset.y`）。
+- 防重：加载期间再次下拉立即结束刷新，不重复发起请求（`isLoadingHistory` 标志）。
+- 加载完所有页后显示 Toast"没有更多历史消息"，不再触发请求。
 
 ---
 
@@ -76,8 +110,8 @@
 
 | 类型 | 来源 | 处理方式 |
 |------|------|----------|
-| 本地录制 | `VoiceMessage.localURL` | 直接播放 |
-| 远程服务器 | `VoiceMessage.remoteURL` | 下载后缓存，再播放 |
+| 本地录制 | `ChatMessage.localURL` | 直接播放 |
+| 远程服务器 | `ChatMessage.remoteURL` | 下载后缓存，再播放 |
 
 ### 3.5 下载缓存
 
@@ -92,7 +126,7 @@
 
 - 每条语音消息默认为**未读状态**，在气泡播放按钮右上角显示红色圆点（直径 10pt）。
 - 用户首次点击播放时，红点以 **0.2s 淡出动画**消失，标记为已读。
-- 已读状态持久化在 `VoiceMessage.isPlayed`，供后续数据层持久化使用。
+- 已读状态持久化在 `ChatMessage.isPlayed`，供后续数据层持久化使用。
 - cell 复用时根据 `isPlayed` 状态直接显隐红点（不触发动画），仅在状态从未读变已读时才播放淡出动画。
 
 ---
@@ -126,11 +160,17 @@
 
 ```
 VoiceIM/
-├── VoiceMessage.swift              // 数据模型，含 isPlayed 持久化字段
+├── ChatMessage.swift               // 通用消息数据模型（voice / text 两种 Kind）
+├── Sender.swift                    // 发送者身份（id、displayName，含 .me / .peer 预置值）
+├── ChatBubbleCell.swift            // Cell 基类（时间分隔行 + 头像 + 收/发方向约束）
+├── VoiceMessageCell.swift          // 语音消息 Cell（继承 ChatBubbleCell）
+├── TextMessageCell.swift           // 文本消息 Cell（继承 ChatBubbleCell）
+├── AvatarView.swift                // 圆形头像占位视图（颜色 + 首字母）
+├── MessageCellConfigurable.swift   // Cell 统一配置协议 + MessageCellDependencies
+├── ChatInputView.swift             // 输入栏（文字 / 语音切换）
 ├── VoiceRecordManager.swift        // 录音管理（@MainActor 单例）
 ├── VoiceCacheManager.swift         // 下载缓存（actor，线程安全）
 ├── VoicePlaybackManager.swift      // 播放管理（@MainActor 单例，播放互斥）
-├── VoiceMessageCell.swift          // 语音消息气泡 Cell（UICollectionViewCell）
 ├── RecordingOverlayView.swift      // 录音浮层（正常 / 预备取消两态）
 ├── ToastView.swift                 // 轻量 Toast 提示
 ├── VoiceChatViewController.swift   // 主页面（UICollectionView + DiffableDataSource）
@@ -143,7 +183,7 @@ VoiceIM/
 
 ## 八、关键设计决策
 
-### 7.1 DiffableDataSource 与 isPlayed 更新（详见 VoiceMessage.swift 注释）
+### 8.1 DiffableDataSource 与 isPlayed 更新（详见 ChatMessage.swift 注释）
 
 **问题**：`isPlayed` 是可变字段，但 DiffableDataSource 要求 item 符合 `Hashable`，状态更新方式影响视觉效果。
 
@@ -153,10 +193,35 @@ VoiceIM/
 | B（当前） | id | reloadItems + messages 数组 | 需维护两份数据 | iOS 13+ |
 | C（待升级） | id | reconfigureItems + insert/delete 替换 item | — | iOS 15+ |
 
-### 7.2 消息发送后的滚动策略
+### 8.2 消息发送后的滚动策略
 
-新消息追加使用 `UIView.performWithoutAnimation { insertRows }` 或 DiffableDataSource `animatingDifferences: false`，避免系统默认的从顶部滑入动画。滚动与否由 `isNearBottom` 决定。
+新消息追加使用 `animatingDifferences: false`，避免系统默认的从顶部滑入动画；滚动与否由 `isNearBottom` 决定。
 
-### 7.3 拖拽 Seek 防抖
+### 8.3 拖拽 Seek 防抖
 
 拖拽期间设置 `isSeeking = true`，阻断播放器 50ms 定时器的进度更新推送，防止 `UISlider.value` 被外部覆盖导致抖动。手指抬起后执行实际 seek 并重置标志。
+
+### 8.4 下拉加载历史的滚动位置保持
+
+插入历史消息后内容总高度增加 ΔH，若不处理 `contentOffset` 会导致屏幕内容向下跳动。
+解决方案：`dataSource.apply` 后立即调用 `collectionView.layoutIfNeeded()` 强制同步布局，
+读取新 `contentSize.height`，将 `contentOffset.y` 加上 ΔH 抵消内容下移。
+
+### 8.5 Cell 类型扩展架构（MessageCellConfigurable）
+
+**问题**：随消息类型增加，cell provider 内的 `switch` 分支持续膨胀，注册代码分散。
+
+**方案**：
+- 所有 Cell 实现 `MessageCellConfigurable` 协议，统一 `configure(with:deps:)` 入口。
+- `ChatMessage.Kind.reuseID` 集中维护 Kind → reuseID 映射，编译器保证 switch 穷举。
+- `MessageCellDependencies` 聚合外部依赖，新增依赖不影响协议签名。
+- cell provider 只剩一次 dequeue + 一次协议调用，新增类型只需：① 建 Cell 实现协议 ② `Kind.reuseID` 追加一行 ③ 注册一行。
+
+### 8.6 收/发方向布局切换
+
+采用两套预构建约束数组（`incomingConstraints` / `outgoingConstraints`），`configureCommon` 时先全部停用再激活目标套。
+相比 `addConstraint`/`removeConstraint`，此方案在 cell 复用时不产生约束冲突警告。
+
+### 8.7 头像颜色稳定性
+
+不使用 `String.hashValue`（Swift SE-0206 每次进程启动随机化），改用 UTF-8 字节求和映射到固定调色板，确保同一发送者头像颜色跨 session 一致。

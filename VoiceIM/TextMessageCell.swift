@@ -1,43 +1,30 @@
 import UIKit
 
-/// 文本消息气泡 Cell
-final class TextMessageCell: UICollectionViewCell {
+/// 文本消息气泡 Cell，继承 ChatBubbleCell 获得时间分隔行、头像和收/发方向布局。
+/// 本类只负责文字内容的显示。
+final class TextMessageCell: ChatBubbleCell {
 
-    static let reuseID = "TextMessageCell"
+    nonisolated static let reuseID = "TextMessageCell"
 
-    private let bubble = UIView()
-    private let label  = UILabel()
+    private let label = UILabel()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        setupUI()
+        setupTextUI()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     // MARK: - UI 搭建
 
-    private func setupUI() {
-        backgroundColor = .clear
-
-        bubble.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.12)
-        bubble.layer.cornerRadius = 14
-        bubble.layer.masksToBounds = true
-        bubble.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(bubble)
-
-        label.font = .systemFont(ofSize: 16)
-        label.textColor = .label
+    private func setupTextUI() {
+        label.font          = .systemFont(ofSize: 16)
+        label.textColor     = .label
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         bubble.addSubview(label)
 
         NSLayoutConstraint.activate([
-            bubble.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            bubble.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
-            bubble.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -6),
-            bubble.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.75),
-
             label.topAnchor.constraint(equalTo: bubble.topAnchor, constant: 10),
             label.bottomAnchor.constraint(equalTo: bubble.bottomAnchor, constant: -10),
             label.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: 12),
@@ -50,5 +37,17 @@ final class TextMessageCell: UICollectionViewCell {
     func configure(with message: ChatMessage) {
         guard case .text(let content) = message.kind else { return }
         label.text = content
+    }
+}
+
+// MARK: - MessageCellConfigurable
+
+extension TextMessageCell: MessageCellConfigurable {
+
+    func configure(with message: ChatMessage, deps: MessageCellDependencies) {
+        // 先调基类方法更新时间分隔行、头像和收/发方向
+        configureCommon(message: message, showTimeHeader: deps.showTimeHeader)
+        // 再更新文字内容
+        configure(with: message)
     }
 }

@@ -7,78 +7,65 @@ protocol VoiceMessageCellDelegate: AnyObject {
     func cellDidLongPress(_ cell: VoiceMessageCell, message: ChatMessage)
 }
 
-/// 语音消息气泡 Cell
-final class VoiceMessageCell: UICollectionViewCell {
+/// 语音消息气泡 Cell，继承 ChatBubbleCell 获得时间分隔行、头像和收/发方向布局。
+/// 本类只负责语音播放控件（播放按钮、进度滑块、时长标签、未读红点）。
+final class VoiceMessageCell: ChatBubbleCell {
 
-    static let reuseID = "VoiceMessageCell"
+    nonisolated static let reuseID = "VoiceMessageCell"
 
     weak var delegate: VoiceMessageCellDelegate?
     private(set) var message: ChatMessage?
 
-    // MARK: - 子视图
+    // MARK: - 子视图（均添加到基类的 bubble 容器内，unreadDot 除外）
 
-    private let bubble = UIView()
-    private let playBtn = UIButton(type: .system)
+    private let playBtn      = UIButton(type: .system)
     private let durationLabel = UILabel()
-    /// 用 UISlider 替代 UIProgressView，支持拖拽跳转
-    private let seekSlider = UISlider()
-
-    /// 用户正在拖拽时为 true，屏蔽来自播放器的进度更新，避免抖动
-    private var isSeeking = false
-
-    // 未播放红点
-    private let unreadDot = UIView()
+    /// 进度滑块，播放时可见，支持拖拽跳转
+    private let seekSlider   = UISlider()
+    /// 用户正在拖拽时为 true，屏蔽来自播放器的进度推送，避免抖动
+    private var isSeeking    = false
+    /// 未播放红点（加到 contentView 层，避免被 bubble.masksToBounds 裁掉一半）
+    private let unreadDot    = UIView()
 
     // MARK: - 初始化
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        setupUI()
+        setupVoiceUI()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     // MARK: - UI 搭建
 
-    private func setupUI() {
-        backgroundColor = .clear
-
-        // 气泡容器
-        bubble.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.12)
-        bubble.layer.cornerRadius = 14
-        bubble.layer.masksToBounds = true
-        bubble.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(bubble)
-
+    private func setupVoiceUI() {
         // 播放按钮
         playBtn.setImage(UIImage(systemName: "play.circle.fill"), for: .normal)
         playBtn.tintColor = .systemBlue
-        playBtn.contentVerticalAlignment = .fill
+        playBtn.contentVerticalAlignment   = .fill
         playBtn.contentHorizontalAlignment = .fill
         playBtn.translatesAutoresizingMaskIntoConstraints = false
         playBtn.addTarget(self, action: #selector(playTapped), for: .touchUpInside)
         bubble.addSubview(playBtn)
 
-        // 未播放红点（叠在播放按钮右上角）
-        unreadDot.backgroundColor = .systemRed
+        // 未播放红点：叠加在播放按钮右上角，需在 contentView 层以免被 bubble 裁剪
+        unreadDot.backgroundColor    = .systemRed
         unreadDot.layer.cornerRadius = 5
         unreadDot.translatesAutoresizingMaskIntoConstraints = false
-        // 加到 contentView 层，避免被 bubble.masksToBounds 裁掉一半
         contentView.addSubview(unreadDot)
 
         // 时长标签
-        durationLabel.font = .monospacedDigitSystemFont(ofSize: 14, weight: .medium)
+        durationLabel.font      = .monospacedDigitSystemFont(ofSize: 14, weight: .medium)
         durationLabel.textColor = .label
         durationLabel.translatesAutoresizingMaskIntoConstraints = false
         bubble.addSubview(durationLabel)
 
         // 进度滑块（播放时才显示）
-        seekSlider.minimumValue = 0
-        seekSlider.maximumValue = 1
-        seekSlider.value = 0
+        seekSlider.minimumValue          = 0
+        seekSlider.maximumValue          = 1
+        seekSlider.value                 = 0
         seekSlider.minimumTrackTintColor = .systemBlue
         seekSlider.maximumTrackTintColor = UIColor.label.withAlphaComponent(0.12)
-        // 缩小 thumb，视觉接近 ProgressView 同时支持拖拽
         let thumbSize = CGSize(width: 14, height: 14)
         seekSlider.setThumbImage(makeThumbImage(size: thumbSize, color: .systemBlue), for: .normal)
         seekSlider.setThumbImage(makeThumbImage(size: thumbSize, color: .systemBlue), for: .highlighted)
@@ -89,7 +76,8 @@ final class VoiceMessageCell: UICollectionViewCell {
         // 拖动中：实时刷新剩余时长标签
         seekSlider.addTarget(self, action: #selector(sliderValueChanged), for: .valueChanged)
         // 手指抬起（无论是否在 slider 内）：执行 seek
-        seekSlider.addTarget(self, action: #selector(sliderTouchUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        seekSlider.addTarget(self, action: #selector(sliderTouchUp),
+                             for: [.touchUpInside, .touchUpOutside, .touchCancel])
         bubble.addSubview(seekSlider)
 
         // 长按气泡触发删除菜单
@@ -98,12 +86,8 @@ final class VoiceMessageCell: UICollectionViewCell {
         bubble.addGestureRecognizer(lp)
 
         NSLayoutConstraint.activate([
-            // 气泡靠左，最大宽度 65%
-            bubble.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            bubble.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
-            bubble.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -6),
+            // 语音气泡最小宽度，保证播放按钮 + 时长标签不被压缩
             bubble.widthAnchor.constraint(greaterThanOrEqualToConstant: 130),
-            bubble.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.65),
 
             // 播放按钮
             playBtn.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: 10),
@@ -111,7 +95,8 @@ final class VoiceMessageCell: UICollectionViewCell {
             playBtn.widthAnchor.constraint(equalToConstant: 32),
             playBtn.heightAnchor.constraint(equalToConstant: 32),
 
-            // 未播放红点：直径 10pt，吸附在播放按钮右上角
+            // 未读红点：直径 10pt，吸附在播放按钮右上角
+            // unreadDot 与 playBtn 同属 contentView 下，跨子树约束合法
             unreadDot.widthAnchor.constraint(equalToConstant: 10),
             unreadDot.heightAnchor.constraint(equalToConstant: 10),
             unreadDot.centerXAnchor.constraint(equalTo: playBtn.trailingAnchor, constant: -2),
@@ -235,5 +220,21 @@ final class VoiceMessageCell: UICollectionViewCell {
             color.setFill()
             ctx.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
         }
+    }
+}
+
+// MARK: - MessageCellConfigurable
+
+extension VoiceMessageCell: MessageCellConfigurable {
+
+    func configure(with message: ChatMessage, deps: MessageCellDependencies) {
+        // 先调基类方法更新时间分隔行、头像和收/发方向
+        configureCommon(message: message, showTimeHeader: deps.showTimeHeader)
+        // 再更新语音播放状态
+        delegate = deps.voiceDelegate
+        configure(with: message,
+                  isPlaying: deps.isPlaying(message.id),
+                  progress: 0,
+                  isUnread: !message.isPlayed)
     }
 }

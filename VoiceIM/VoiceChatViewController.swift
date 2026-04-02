@@ -51,6 +51,13 @@ final class VoiceChatViewController: UIViewController {
 
     private var messages: [ChatMessage] = []
 
+    // MARK: - 历史记录加载
+
+    private var isLoadingHistory = false    // 防重复触发
+    private var historyPage = 0             // 已加载页数
+    private let maxHistoryPages = 3         // mock 数据最多 3 页
+    private let historyRefreshControl = UIRefreshControl()
+
     // MARK: - 管理器（单例引用）
 
     private let recorder = VoiceRecordManager.shared
@@ -108,45 +115,58 @@ final class VoiceChatViewController: UIViewController {
         collectionView.backgroundColor = .systemBackground
         collectionView.keyboardDismissMode = .onDrag
         collectionView.translatesAutoresizingMaskIntoConstraints = false
-        collectionView.register(VoiceMessageCell.self,
-                                forCellWithReuseIdentifier: VoiceMessageCell.reuseID)
-        collectionView.register(TextMessageCell.self,
-                                forCellWithReuseIdentifier: TextMessageCell.reuseID)
+        // 注册所有消息 Cell 类型；新增类型时在此追加一行即可
+        VoiceMessageCell.register(in: collectionView)
+        TextMessageCell.register(in: collectionView)
         view.addSubview(collectionView)
 
         // DiffableDataSource
+        // cell provider 通过 MessageCellConfigurable 协议统一分发，
+        // 不再含 switch 分支，新增消息类型无需修改此处。
         dataSource = UICollectionViewDiffableDataSource<Section, ChatMessage>(
             collectionView: collectionView
         ) { [weak self] cv, indexPath, message in
             guard let self else { return UICollectionViewCell() }
+            // 从 messages 数组取最新状态，保证 isPlayed 等可变字段始终准确
             let current = self.messages.first(where: { $0.id == message.id }) ?? message
 
-            switch current.kind {
-            case .voice:
-                let cell = cv.dequeueReusableCell(
-                    withReuseIdentifier: VoiceMessageCell.reuseID,
-                    for: indexPath) as! VoiceMessageCell    // swiftlint:disable:this force_cast
-                // 从 messages 数组取最新状态，保证 isPlayed 始终准确
-                cell.configure(with: current,
-                               isPlaying: self.player.isPlaying(id: current.id),
-                               progress: 0,
-                               isUnread: !current.isPlayed)
-                cell.delegate = self
-                return cell
+            // 计算是否在此消息上方显示时间分隔行：
+            //   - 第一条消息（prev == nil）始终显示（?? true）
+            //   - 与上一条间隔 >5 分钟时显示
+            //
+            // 注意：用 UUID 查找 currentIdx 而非直接使用 indexPath.item。
+            // prependMessages 插入历史消息时，dataSource.apply 是同步的，
+            // 但 CompositionalLayout 的 cell provider 可能在下一个布局周期被再次调用，
+            // 此时 indexPath.item 与 messages 数组下标的对应关系仍然正确；
+            // 不过 UUID 查找方式更健壮，不依赖二者严格对应的假设。
+            let currentIdx = self.messages.firstIndex(where: { $0.id == current.id }) ?? indexPath.item
+            let prev = currentIdx > 0 ? self.messages[currentIdx - 1] : nil
+            let showTime = prev.map { current.sentAt.timeIntervalSince($0.sentAt) > 5 * 60 } ?? true
 
-            case .text:
-                let cell = cv.dequeueReusableCell(
-                    withReuseIdentifier: TextMessageCell.reuseID,
-                    for: indexPath) as! TextMessageCell    // swiftlint:disable:this force_cast
-                cell.configure(with: current)
-                return cell
-            }
+            // 构造依赖包：各 Cell 按需取用，不关心的字段直接忽略
+            let deps = MessageCellDependencies(
+                isPlaying: self.player.isPlaying(id:),
+                showTimeHeader: showTime,
+                voiceDelegate: self)
+
+            // Kind.reuseID 与注册时保持一致，强转安全
+            let cell = cv.dequeueReusableCell(
+                withReuseIdentifier: current.kind.reuseID,
+                for: indexPath)
+            (cell as! any MessageCellConfigurable).configure(with: current, deps: deps)  // swiftlint:disable:this force_cast
+            return cell
         }
 
         // 初始化空 snapshot
         var snapshot = NSDiffableDataSourceSnapshot<Section, ChatMessage>()
         snapshot.appendSections([.main])
         dataSource.apply(snapshot, animatingDifferences: false)
+
+        // 下拉加载历史
+        historyRefreshControl.addTarget(self,
+                                        action: #selector(handleHistoryRefresh),
+                                        for: .valueChanged)
+        collectionView.refreshControl = historyRefreshControl
     }
 
     /// iOS 13 CompositionalLayout：单列、自适应高度，模拟 TableView list 样式
@@ -409,6 +429,73 @@ final class VoiceChatViewController: UIViewController {
         }
     }
 
+    /// UIRefreshControl 触发回调（用户在列表顶部下拉时调用）。
+    ///
+    /// 防重：`isLoadingHistory` 为 true 时直接结束刷新，避免下拉过程中再次触发。
+    /// 分页边界：加载完 `maxHistoryPages` 页后提示用户，不再发起请求。
+    @objc private func handleHistoryRefresh() {
+        // 上一次请求尚未完成，直接收起刷新指示器
+        guard !isLoadingHistory else {
+            historyRefreshControl.endRefreshing()
+            return
+        }
+        // 已加载所有 mock 页，告知用户没有更多历史
+        guard historyPage < maxHistoryPages else {
+            historyRefreshControl.endRefreshing()
+            ToastView.show("没有更多历史消息", in: view)
+            return
+        }
+        isLoadingHistory = true
+        // 模拟网络延迟（实际项目替换为网络/数据库请求）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self else { return }
+            self.prependMessages(self.makeMockHistoryBatch())
+        }
+    }
+
+    /// 将一批历史消息插入列表头部，并保持用户当前阅读位置不跳动。
+    ///
+    /// # 滚动位置锚定原理
+    /// 在头部插入 N 条消息后，内容总高度会增加 ΔH。
+    /// 若不修正 contentOffset，UICollectionView 会将原来可见的内容向下推移 ΔH，
+    /// 造成屏幕内容"跳动"。解决方式：
+    ///   1. 记录 apply 前的 contentOffset.y 和 contentSize.height
+    ///   2. apply(animatingDifferences: false) 同步完成后调用 layoutIfNeeded()
+    ///      强制立即计算新 contentSize（否则 contentSize 在下一个 RunLoop 才更新）
+    ///   3. 将 contentOffset.y 增加 ΔH，抵消内容下移，用户视线锚定不变
+    private func prependMessages(_ newMessages: [ChatMessage]) {
+        isLoadingHistory = false
+        historyRefreshControl.endRefreshing()
+        guard !newMessages.isEmpty else { return }
+
+        // 步骤 1：记录插入前的布局状态
+        let oldHeight  = collectionView.contentSize.height
+        let oldOffsetY = collectionView.contentOffset.y
+
+        // 同步更新可变状态真实来源（与 appendMessage 保持对称）
+        messages.insert(contentsOf: newMessages, at: 0)
+
+        // 步骤 2：在 snapshot 头部插入
+        // insertItems(beforeItem:) 要求 beforeItem 已存在于 snapshot；
+        // 若列表为空（极端情况）则退化为 appendItems
+        var snapshot = dataSource.snapshot()
+        let existing = snapshot.itemIdentifiers(inSection: .main)
+        if let first = existing.first {
+            snapshot.insertItems(newMessages, beforeItem: first)
+        } else {
+            snapshot.appendItems(newMessages, toSection: .main)
+        }
+        // animatingDifferences: false → apply 在当前 RunLoop 同步执行，无插入/删除动画
+        dataSource.apply(snapshot, animatingDifferences: false)
+
+        // 步骤 3：强制立即布局，确保 contentSize 已反映新内容
+        collectionView.layoutIfNeeded()
+
+        // 步骤 4：偏移补偿，锚定用户视线
+        let heightDiff = collectionView.contentSize.height - oldHeight
+        collectionView.contentOffset.y = oldOffsetY + heightDiff
+    }
+
     /// 将指定消息标记为已播放，触发 cell 红点消失。
     ///
     /// # isPlayed 更新策略对比（完整分析见 ChatMessage.swift Hashable 设计说明）
@@ -550,17 +637,72 @@ extension VoiceChatViewController: VoiceMessageCellDelegate {
 
 extension VoiceChatViewController {
 
-    /// 预填 20 条文本消息，用于开发阶段验证列表滚动、键盘遮挡等交互。
+    /// 生成一批 mock 历史消息，时间比当前列表更早，触发时间分隔行（上线前删除）。
+    private func makeMockHistoryBatch() -> [ChatMessage] {
+        historyPage += 1
+        let now = Date()
+        // 每页使用更早的时间段，确保加载后能出现时间分隔行
+        let batches: [[(String, Sender, TimeInterval)]] = [
+            [   // 约 3 小时前
+                ("早上好！",        .peer, 3 * 3600),
+                ("bug 修好了吗？",   .me,   3 * 3600 - 120),
+                ("修好了，并发问题", .peer, 3 * 3600 - 240),
+                ("actor 确实好用",  .me,   3 * 3600 - 360),
+                ("下次注意",        .peer, 3 * 3600 - 480),
+            ],
+            [   // 约 6 小时前
+                ("周末有空吗？",   .me,   6 * 3600),
+                ("周六可以",       .peer, 6 * 3600 - 120),
+                ("讨论新需求",     .me,   6 * 3600 - 240),
+                ("没问题",         .peer, 6 * 3600 - 360),
+            ],
+            [   // 昨天
+                ("好久不见！",       .peer, 25 * 3600),
+                ("新功能快上线了吗？", .me,  25 * 3600 - 120),
+                ("还差一点",         .peer, 25 * 3600 - 240),
+                ("加油，期待！",      .me,  25 * 3600 - 360),
+            ],
+        ]
+        return batches[(historyPage - 1) % batches.count].map { text, sender, ago in
+            .text(text, sender: sender, sentAt: now - ago)
+        }
+    }
+
+    /// 预填 20 条消息，收发交替、时间分布触发多处时间分隔行。
     /// 上线前删除此方法及 viewDidLoad 中的调用即可。
     private func insertMockMessages() {
-        let texts = [
-            "你好！", "最近怎么样？", "我在学习 Swift 并发模型", "感觉 actor 挺好用的",
-            "对，隔离状态很清晰", "你用 SwiftUI 还是 UIKit？", "目前还是 UIKit",
-            "等 iOS 15 最低版本要求普及再迁移", "有道理", "今天天气不错",
-            "出去走走？", "下午有个会", "那改天吧", "好的", "记得发语音消息测试一下",
-            "哈哈好的", "长按录音按钮", "松手发送", "上滑取消", "收到！"
+        let now = Date()
+        // (文本, 发送者, 距今秒数)
+        // 分为 4 组，组间间隔 >5 分钟，组内间隔 <1 分钟，形成 4 条时间分隔行
+        let entries: [(String, Sender, TimeInterval)] = [
+            // 组 1：约 1 小时前
+            ("你好！",             .peer, 3600),
+            ("最近怎么样？",        .me,   3555),
+            ("在学 Swift 并发模型", .peer, 3510),
+            ("actor 挺好用的",     .me,   3465),
+            ("隔离状态很清晰",      .peer, 3420),
+            // 组 2：约 30 分钟前（间隔 ~26 分钟 → 显示时间分隔行）
+            ("你用 SwiftUI 还是 UIKit？", .me,   1800),
+            ("目前还是 UIKit",            .peer, 1755),
+            ("等 iOS 15 普及再迁移",      .me,   1710),
+            ("有道理",                    .peer, 1665),
+            ("今天天气不错",              .me,   1620),
+            // 组 3：约 10 分钟前（间隔 ~17 分钟 → 显示时间分隔行）
+            ("出去走走？",   .peer, 600),
+            ("下午有个会",   .me,   555),
+            ("那改天吧",     .peer, 510),
+            ("好的",         .me,   465),
+            ("记得测语音",   .peer, 420),
+            // 组 4：约 1 分钟前（间隔 ~6 分钟 → 显示时间分隔行）
+            ("哈哈好的",   .me,    60),
+            ("长按录音按钮", .peer,  45),
+            ("松手发送",   .me,    30),
+            ("上滑取消",   .peer,  15),
+            ("收到！",     .me,     0),
         ]
-        texts.forEach { appendMessage(.text($0)) }
+        entries.forEach { text, sender, ago in
+            appendMessage(.text(text, sender: sender, sentAt: now - ago))
+        }
     }
 }
 
