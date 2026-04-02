@@ -12,7 +12,9 @@
       "Bash(mv AvatarView.swift Views/)",
       "Bash(mv ChatInputView.swift Views/)",
       "Bash(mv RecordingOverlayView.swift Views/)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }
