@@ -69,6 +69,7 @@ final class VoiceRecordManager: NSObject {
 
         let rec = try AVAudioRecorder(url: url, settings: settings)
         rec.delegate = self
+        rec.isMeteringEnabled = true
         rec.record()
         recorder = rec
         isRecording = true
@@ -78,6 +79,15 @@ final class VoiceRecordManager: NSObject {
     /// 当前录音时长
     var currentTime: TimeInterval {
         recorder?.currentTime ?? 0
+    }
+
+    /// 当前录音输入音量（0...1），用于驱动波形动画
+    var normalizedPowerLevel: Float {
+        guard let recorder else { return 0 }
+        recorder.updateMeters()
+        let averagePower = recorder.averagePower(forChannel: 0) // dBFS: 0...-160
+        let linear = pow(10, averagePower / 20)                // 线性幅度: ~0...1
+        return max(0, min(linear, 1))
     }
 
     /// 停止录音并返回文件 URL

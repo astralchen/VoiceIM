@@ -36,6 +36,10 @@ final class RecordingOverlayViewController: UIViewController {
     func updateSeconds(_ seconds: Int) {
         overlayView.updateSeconds(seconds)
     }
+
+    func updateAudioLevel(_ level: Float) {
+        overlayView.updateAudioLevel(level)
+    }
 }
 
 // MARK: - Transitioning Delegate

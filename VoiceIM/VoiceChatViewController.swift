@@ -31,6 +31,7 @@ final class VoiceChatViewController: UIViewController {
 
     private var touchStartY: CGFloat = 0
     private var countdownTimer: Timer?
+    private var audioLevelTimer: Timer?
     private var elapsedSeconds = 0
     /// 长按手势是否仍处于激活状态（.began → true，.ended/.cancelled/.failed → false）
     /// 用于检测：权限弹窗期间用户已松手，授权回调返回后不应启动录音
@@ -309,16 +310,38 @@ final class VoiceChatViewController: UIViewController {
                 }
             }
         }
+        startAudioLevelUpdates()
     }
 
     private func stopCountdown() {
         countdownTimer?.invalidate()
         countdownTimer = nil
+        stopAudioLevelUpdates()
+    }
+
+    private func startAudioLevelUpdates() {
+        audioLevelTimer?.invalidate()
+
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.recordState != .idle else { return }
+                self.overlayVC.updateAudioLevel(self.recorder.normalizedPowerLevel)
+            }
+        }
+        audioLevelTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopAudioLevelUpdates() {
+        audioLevelTimer?.invalidate()
+        audioLevelTimer = nil
     }
 
     private func finishAndSend() {
         stopCountdown()
-        let actualDuration = recorder.currentTime
+        // AVAudioRecorder.currentTime 在到达上限附近可能略超 30（如 30.01）；
+        // 这里做上限钳制，避免列表向上取整后显示 31"。
+        let actualDuration = min(recorder.currentTime, TimeInterval(maxRecordSeconds))
         guard let url = recorder.stopRecording() else { resetToIdle(); return }
         if actualDuration < 1.0 {
             try? FileManager.default.removeItem(at: url)
@@ -362,6 +385,7 @@ final class VoiceChatViewController: UIViewController {
         chatInputView.setTextInputEnabled(false)
         overlayVC.setState(.recording)
         overlayVC.updateSeconds(0)
+        overlayVC.updateAudioLevel(0)
         present(overlayVC, animated: true)
     }
 

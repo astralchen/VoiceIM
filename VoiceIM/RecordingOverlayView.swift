@@ -16,7 +16,7 @@ final class RecordingOverlayView: UIView {
     /// 录音气泡（波形图标 + 时间计数）
     private let bubbleView        = UIView()
     private let bubbleStackView   = UIStackView()
-    private let waveformImageView = UIImageView()
+    private let waveformView      = AudioLevelWaveformView()
     private let timeLabel         = UILabel()
 
     /// 取消指示圆圈（X 图标），cancelReady 时变红
@@ -118,12 +118,9 @@ final class RecordingOverlayView: UIView {
         bubbleView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(bubbleView)
 
-        let waveConfig = UIImage.SymbolConfiguration(pointSize: 26, weight: .regular)
-        waveformImageView.image = UIImage(systemName: "waveform", withConfiguration: waveConfig)
-        waveformImageView.tintColor = UIColor(red: 0.45, green: 0.22, blue: 0.75, alpha: 1)
-        waveformImageView.contentMode = .scaleAspectFit
-        waveformImageView.setContentHuggingPriority(.required, for: .vertical)
-        waveformImageView.setContentCompressionResistancePriority(.required, for: .vertical)
+        waveformView.barColor = UIColor(red: 0.45, green: 0.22, blue: 0.75, alpha: 1)
+        waveformView.setContentHuggingPriority(.required, for: .vertical)
+        waveformView.setContentCompressionResistancePriority(.required, for: .vertical)
 
         timeLabel.text  = "0\""
         timeLabel.font  = .monospacedDigitSystemFont(ofSize: 16, weight: .semibold)
@@ -137,7 +134,7 @@ final class RecordingOverlayView: UIView {
         bubbleStackView.distribution = .fill
         bubbleStackView.spacing = 8
         bubbleStackView.translatesAutoresizingMaskIntoConstraints = false
-        bubbleStackView.addArrangedSubview(waveformImageView)
+        bubbleStackView.addArrangedSubview(waveformView)
         bubbleStackView.addArrangedSubview(timeLabel)
         bubbleView.addSubview(bubbleStackView)
 
@@ -211,12 +208,12 @@ final class RecordingOverlayView: UIView {
 
         if cancel {
             bubbleView.backgroundColor    = .systemRed
-            waveformImageView.tintColor   = .white
+            waveformView.barColor         = .white
             timeLabel.textColor           = .white
             cancelCircleView.backgroundColor = .systemRed
         } else {
             bubbleView.backgroundColor    = .white
-            waveformImageView.tintColor   = UIColor(red: 0.45, green: 0.22, blue: 0.75, alpha: 1)
+            waveformView.barColor         = UIColor(red: 0.45, green: 0.22, blue: 0.75, alpha: 1)
             timeLabel.textColor           = .label
             cancelCircleView.backgroundColor = UIColor(white: 0.15, alpha: 0.90)
         }
@@ -229,6 +226,10 @@ final class RecordingOverlayView: UIView {
 
     func updateSeconds(_ seconds: Int) {
         timeLabel.text = String(format: "%d\"", seconds)
+    }
+
+    func updateAudioLevel(_ level: Float) {
+        waveformView.update(level: CGFloat(level))
     }
 
     // MARK: - 私有
@@ -284,5 +285,114 @@ final class RecordingOverlayView: UIView {
         )
         path.close()
         return path
+    }
+}
+
+/// 录音电平波形（UIKit 版），外观类似语音输入中的实时音频动画。
+private final class AudioLevelWaveformView: UIView {
+
+    var barColor: UIColor = .systemBlue {
+        didSet { barLayers.forEach { $0.backgroundColor = barColor.cgColor } }
+    }
+
+    // 对齐设计稿 SVG：71 x 13
+    override var intrinsicContentSize: CGSize { CGSize(width: 71, height: 13) }
+
+    private struct BarSpec {
+        let x: CGFloat
+        let width: CGFloat
+        let baseHeight: CGFloat
+        let phase: CGFloat
+    }
+
+    private static let designSize = CGSize(width: 71, height: 13)
+    private static let barSpecs: [BarSpec] = [
+        // 左侧组（5 根）
+        .init(x: 0.0000, width: 1.9722, baseHeight: 7.2982, phase: 0.0),
+        .init(x: 3.9444, width: 1.9722, baseHeight: 3.6491, phase: 0.8),
+        .init(x: 7.8889, width: 1.9722, baseHeight: 13.0000, phase: 1.6),
+        .init(x: 11.8333, width: 1.9722, baseHeight: 9.2323, phase: 2.4),
+        .init(x: 15.7778, width: 1.9722, baseHeight: 5.4737, phase: 3.2),
+
+        // 中间组（9 根）
+        .init(x: 18.9333 + 0.0000, width: 1.9490, baseHeight: 10.7250, phase: 0.5),
+        .init(x: 18.9333 + 3.8980, width: 1.9490, baseHeight: 6.5000, phase: 1.1),
+        .init(x: 18.9333 + 7.7961, width: 1.9490, baseHeight: 13.0000, phase: 1.7),
+        .init(x: 18.9333 + 11.6941, width: 1.9490, baseHeight: 7.8000, phase: 2.3),
+        .init(x: 18.9333 + 15.5922, width: 1.9490, baseHeight: 5.2000, phase: 2.9),
+        .init(x: 18.9333 + 19.4902, width: 1.9490, baseHeight: 9.4250, phase: 3.5),
+        .init(x: 18.9333 + 23.3882, width: 1.9490, baseHeight: 13.0000, phase: 4.1),
+        .init(x: 18.9333 + 27.2863, width: 1.9490, baseHeight: 10.7250, phase: 4.7),
+        .init(x: 18.9333 + 31.1843, width: 1.9490, baseHeight: 6.8250, phase: 5.3),
+
+        // 右侧组（5 根）
+        .init(x: 53.2500 + 0.0000, width: 1.9722, baseHeight: 7.2982, phase: 0.3),
+        .init(x: 53.2500 + 3.9444, width: 1.9722, baseHeight: 3.6491, phase: 1.1),
+        .init(x: 53.2500 + 7.8889, width: 1.9722, baseHeight: 13.0000, phase: 1.9),
+        .init(x: 53.2500 + 11.8333, width: 1.9722, baseHeight: 9.2323, phase: 2.7),
+        .init(x: 53.2500 + 15.7778, width: 1.9722, baseHeight: 5.4737, phase: 3.5),
+    ]
+
+    private var barLayers: [CALayer] = []
+    private var smoothedLevel: CGFloat = 0
+    private var tick: CGFloat = 0
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+
+        for _ in Self.barSpecs {
+            let bar = CALayer()
+            bar.backgroundColor = barColor.cgColor
+            layer.addSublayer(bar)
+            barLayers.append(bar)
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // 初始布局显示低电平静态态，避免首次出现空白。
+        apply(level: smoothedLevel, animated: false)
+    }
+
+    func update(level: CGFloat) {
+        let clamped = max(0, min(level, 1))
+        // 一阶平滑，减少抖动
+        smoothedLevel = smoothedLevel * 0.72 + clamped * 0.28
+        tick += 1
+        apply(level: smoothedLevel, animated: true)
+    }
+
+    private func apply(level: CGFloat, animated: Bool) {
+        guard bounds.width > 0, bounds.height > 0, !barLayers.isEmpty else { return }
+
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(animated ? 0.05 : 0)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+
+        let sx = bounds.width / Self.designSize.width
+        let sy = bounds.height / Self.designSize.height
+        let minHeight = max(1.2 * sy, 1)
+
+        for (idx, spec) in Self.barSpecs.enumerated() {
+            // 录音越大，整体越接近设计稿原始高度；低音量也保持最小跳动。
+            let envelope = 0.35 + level * 0.95
+            let pulse = 1 + 0.18 * sin((tick * 0.45) + spec.phase)
+            let gain = max(0.12, min(envelope * pulse, 1.25))
+
+            let baseHeight = spec.baseHeight * sy
+            let height = min(bounds.height, max(minHeight, baseHeight * gain))
+            let width = max(1, spec.width * sx)
+            let x = spec.x * sx
+            let y = (bounds.height - height) * 0.5
+
+            let bar = barLayers[idx]
+            bar.cornerRadius = min(width * 0.5, height * 0.5)
+            bar.frame = CGRect(x: x, y: y, width: width, height: height)
+        }
+
+        CATransaction.commit()
     }
 }

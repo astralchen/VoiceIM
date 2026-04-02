@@ -170,14 +170,14 @@ final class VoiceMessageCell: ChatBubbleCell {
 
     private func showTotalDuration() {
         guard let msg = message else { return }
-        let secs = Int(msg.duration.rounded(.up))
+        let secs = Int(max(msg.duration, 0).rounded(.down))
         durationLabel.text = String(format: "%d\"", max(secs, 1))
     }
 
     private func updateRemainingLabel(progress: Float) {
         guard let msg = message else { return }
         let remaining = msg.duration * Double(1.0 - progress)
-        let secs = Int(remaining.rounded(.up))
+        let secs = Int(max(remaining, 0).rounded(.down))
         durationLabel.text = String(format: "%d\"", max(secs, 0))
     }
 
