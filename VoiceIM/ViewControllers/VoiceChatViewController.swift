@@ -276,6 +276,11 @@ final class VoiceChatViewController: UIViewController {
     }
 
     private func setupPlaybackCallbacks() {
+        // 播放开始时标记为已播放（红点消失）
+        // 注意：只有播放器真正启动后才触发，避免 URL 获取失败或播放器启动失败时错误标记
+        player.onStart = { [weak self] id in
+            self?.markAsPlayed(id: id)
+        }
         player.onProgress = { [weak self] id, progress in
             self?.cellForMessage(id: id)?.applyPlayState(isPlaying: true, progress: progress)
         }
@@ -735,7 +740,6 @@ final class VoiceChatViewController: UIViewController {
             player.stopCurrent()
             return
         }
-        markAsPlayed(id: message.id)
         Task { @MainActor in
             do {
                 let url = try await self.resolveURL(for: message)

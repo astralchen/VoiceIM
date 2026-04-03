@@ -13,6 +13,8 @@ final class VoicePlaybackManager: NSObject {
     /// 正在播放的消息 ID
     private(set) var playingID: UUID?
 
+    /// 开始播放回调
+    var onStart: ((UUID) -> Void)?
     /// 播放进度回调 (消息ID, 进度 0~1)
     var onProgress: ((UUID, Float) -> Void)?
     /// 停止/播放完成回调
@@ -36,6 +38,8 @@ final class VoicePlaybackManager: NSObject {
         p.play()
         player = p
         playingID = id
+
+        onStart?(id)
 
         progressTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -65,6 +69,16 @@ final class VoicePlaybackManager: NSObject {
     func seek(to progress: Float) {
         guard let p = player, p.duration > 0 else { return }
         p.currentTime = Double(progress) * p.duration
+    }
+
+    /// 获取当前播放时间（秒），用于显示播放进度时间
+    var currentTime: TimeInterval {
+        player?.currentTime ?? 0
+    }
+
+    /// 获取总时长（秒），用于显示播放进度时间
+    var duration: TimeInterval {
+        player?.duration ?? 0
     }
 
     // MARK: - 私有
