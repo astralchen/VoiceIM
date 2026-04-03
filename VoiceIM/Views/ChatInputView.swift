@@ -26,13 +26,13 @@ final class ChatInputView: UIView {
     var onHeightChange: (() -> Void)?
     /// 扩展功能按钮点击回调（类似 iMessage 的 + 按钮）
     var onExtensionTap: (() -> Void)?
-    /// 扩展功能菜单提供者（返回 UIMenu）
-    var extensionMenuProvider: (() -> UIMenu?)?
+    /// 扩展功能按钮（暴露给 InputCoordinator 设置 menu）
+    var extensionButton: UIButton { _extensionButton }
 
     // MARK: - 子视图
 
     /// 左侧扩展功能按钮（类似 iMessage 的 + 按钮）
-    private let extensionButton = UIButton(type: .system)
+    private let _extensionButton = UIButton(type: .system)
     private let textView         = UITextView()
     private let placeholderLabel = UILabel()
     private let sendButton       = UIButton(type: .system)
@@ -107,20 +107,17 @@ final class ChatInputView: UIView {
         backgroundColor = .secondarySystemBackground
 
         // ── 扩展功能按钮（左下角固定，类似 iMessage 的 + 按钮）──────────────
-        extensionButton.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
-        extensionButton.tintColor = .systemBlue
-        extensionButton.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(extensionButton)
-
-        // 添加 UIContextMenuInteraction
-        let interaction = UIContextMenuInteraction(delegate: self)
-        extensionButton.addInteraction(interaction)
+        _extensionButton.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
+        _extensionButton.tintColor = .systemBlue
+        _extensionButton.translatesAutoresizingMaskIntoConstraints = false
+        _extensionButton.showsMenuAsPrimaryAction = true  // 点击时直接显示菜单
+        addSubview(_extensionButton)
 
         NSLayoutConstraint.activate([
-            extensionButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            extensionButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
-            extensionButton.widthAnchor.constraint(equalToConstant: 32),
-            extensionButton.heightAnchor.constraint(equalToConstant: 32),
+            _extensionButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            _extensionButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            _extensionButton.widthAnchor.constraint(equalToConstant: 32),
+            _extensionButton.heightAnchor.constraint(equalToConstant: 32),
         ])
 
         // ── 发送按钮（右下角固定）──────────────────────────────────────────────
@@ -189,7 +186,7 @@ final class ChatInputView: UIView {
         textViewBottomConstraint = textView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10)
 
         NSLayoutConstraint.activate([
-            textView.leadingAnchor.constraint(equalTo: extensionButton.trailingAnchor, constant: 8),
+            textView.leadingAnchor.constraint(equalTo: _extensionButton.trailingAnchor, constant: 8),
             textViewTopConstraint,
             textViewBottomConstraint,
             textViewHeightConstraint,
@@ -223,7 +220,7 @@ final class ChatInputView: UIView {
 
         // 语音模式的 top/bottom/height 初始不激活，切换时再启用
         NSLayoutConstraint.activate([
-            voiceInputButton.leadingAnchor.constraint(equalTo: extensionButton.trailingAnchor, constant: 8),
+            voiceInputButton.leadingAnchor.constraint(equalTo: _extensionButton.trailingAnchor, constant: 8),
             voiceInputButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -8),
         ])
 
@@ -311,7 +308,7 @@ final class ChatInputView: UIView {
     // MARK: - 扩展功能按钮
 
     @objc private func extensionTapped() {
-        // 保留回调以兼容旧代码，但优先使用 UIContextMenuInteraction
+        // 保留回调以兼容旧代码，但优先使用 UIButton.menu
         onExtensionTap?()
     }
 
@@ -384,18 +381,6 @@ extension ChatInputView: UITextViewDelegate {
             } completion: { _ in
                 self.onHeightChange?()
             }
-        }
-    }
-}
-
-// MARK: - UIContextMenuInteractionDelegate
-
-extension ChatInputView: UIContextMenuInteractionDelegate {
-
-    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
-                                configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-            return self?.extensionMenuProvider?()
         }
     }
 }

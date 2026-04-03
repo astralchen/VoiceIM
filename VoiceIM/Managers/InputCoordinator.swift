@@ -101,14 +101,8 @@ final class InputCoordinator {
             self?.handleLongPress(gesture)
         }
 
-        inputView.onExtensionTap = { [weak self] in
-            self?.handleExtensionTap()
-        }
-
-        // 设置扩展功能菜单提供者
-        inputView.extensionMenuProvider = { [weak self] in
-            self?.buildExtensionMenu()
-        }
+        // 使用 UIButton.menu 设置菜单（iOS 14+）
+        inputView.extensionButton.menu = buildExtensionMenu()
     }
 
     // MARK: - Text Input
