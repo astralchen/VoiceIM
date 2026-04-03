@@ -104,6 +104,11 @@ final class InputCoordinator {
         inputView.onExtensionTap = { [weak self] in
             self?.handleExtensionTap()
         }
+
+        // 设置扩展功能菜单提供者
+        inputView.extensionMenuProvider = { [weak self] in
+            self?.buildExtensionMenu()
+        }
     }
 
     // MARK: - Text Input
@@ -114,7 +119,29 @@ final class InputCoordinator {
 
     // MARK: - Extension Menu
 
-    /// 处理扩展功能按钮点击
+    /// 构建扩展功能菜单
+    ///
+    /// 使用 UIMenu 提供以下功能：
+    /// - 相册：调用 PhotoPickerManager 选择图片/视频
+    /// - 拍照：开发中
+    /// - 位置：开发中
+    private func buildExtensionMenu() -> UIMenu {
+        let photoAction = UIAction(title: "相册", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
+            self?.openPhotoPicker()
+        }
+
+        let cameraAction = UIAction(title: "拍照", image: UIImage(systemName: "camera")) { [weak self] _ in
+            self?.showToast?("拍照功能开发中")
+        }
+
+        let locationAction = UIAction(title: "位置", image: UIImage(systemName: "location")) { [weak self] _ in
+            self?.showToast?("位置功能开发中")
+        }
+
+        return UIMenu(children: [photoAction, cameraAction, locationAction])
+    }
+
+    /// 处理扩展功能按钮点击（保留以兼容旧代码）
     ///
     /// 显示 UIAlertController 菜单，提供以下功能：
     /// - 相册：调用 PhotoPickerManager 选择图片/视频

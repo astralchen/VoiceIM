@@ -49,4 +49,7 @@ struct MessageCellDependencies {
 
     /// 视频 Cell 的事件委托
     weak var videoDelegate: VideoMessageCellDelegate?
+
+    /// 文本消息中链接点击的回调（URL、电话号等）
+    var onLinkTapped: ((URL, NSTextCheckingResult.CheckingType) -> Void)?
 }

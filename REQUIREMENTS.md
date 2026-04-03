@@ -225,7 +225,30 @@
 - 点击"复制"将全部文本复制到剪贴板
 - 使用系统原生的上下文菜单交互体验
 
-### 5.2 实现细节
+### 5.2 文本内容检测与高亮
+
+**支持的检测类型**：
+- **URL 链接**：自动检测 http/https 链接
+- **电话号码**：自动检测电话号码格式
+- **银行卡号**：检测 16-19 位银行卡号（支持空格或横线分隔）
+
+**高亮样式**：
+- 蓝色文字 + 下划线
+- 使用 `NSDataDetector` 检测 URL 和电话号
+- 使用正则表达式检测银行卡号
+
+**点击行为**：
+- **URL**：在 Safari 中打开
+- **电话号**：调起系统拨号界面
+- **银行卡号**：弹出 Alert 显示格式化卡号，提供复制功能
+
+**实现细节**：
+- 使用 `NSAttributedString` 实现高亮显示
+- 通过 `NSLayoutManager` 精确计算点击位置
+- 点击事件通过 `MessageCellDependencies.onLinkTapped` 回调传递给外部处理
+- 银行卡号使用自定义 `bankcard:` scheme 标识
+
+### 5.3 实现细节
 
 **统一交互模式**：
 - 所有消息类型（语音/文本/图片/视频）统一使用 `UIContextMenuInteraction`
@@ -434,9 +457,11 @@ VoiceIM/
 - 在 `configureCommon` 中保存 `currentMessage` 供菜单使用
 - `MessageActionHandler.buildContextMenu` 根据消息类型和状态构建 `UIMenu`
 - 文本消息使用 `UILabel` 显示（简洁），复制功能在菜单中实现
+- 文本内容检测使用 `NSDataDetector` + 正则表达式，点击通过 `UITapGestureRecognizer` 处理
 
 **优点**：
 - 统一的交互体验，所有消息类型使用相同的长按交互
 - 高度灵活，外部可以完全控制菜单内容和行为
 - 易于扩展，新增菜单项只需修改 `buildContextMenu` 方法
 - Cell 可复用性强，可以在不同场景下使用不同的菜单
+- 智能识别文本中的特殊内容（URL、电话、银行卡号），提供便捷操作

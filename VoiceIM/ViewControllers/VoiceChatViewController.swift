@@ -97,7 +97,10 @@ final class VoiceChatViewController: UIViewController {
                 showTimeHeader: showTime,
                 voiceDelegate: self,
                 imageDelegate: self,
-                videoDelegate: self)
+                videoDelegate: self,
+                onLinkTapped: { [weak self] url, type in
+                    self?.handleLinkTapped(url: url, type: type)
+                })
 
             let cell = cv.dequeueReusableCell(
                 withReuseIdentifier: current.kind.reuseID,
@@ -463,6 +466,57 @@ extension VoiceChatViewController: VideoMessageCellDelegate {
     }
 }
 
+// MARK: - 链接点击处理
+
+extension VoiceChatViewController {
+
+    /// 处理文本消息中的链接点击
+    private func handleLinkTapped(url: URL, type: NSTextCheckingResult.CheckingType) {
+        if type.contains(.phoneNumber) {
+            // 电话号码
+            if UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url)
+            }
+        } else if type.contains(.link) {
+            // URL 链接
+            if UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url)
+            }
+        } else if type.contains(.address) {
+            // 银行卡号（使用 .address 类型标记）
+            if url.scheme == "bankcard", let cardNumber = url.host {
+                handleBankCardTapped(cardNumber: cardNumber)
+            }
+        }
+    }
+
+    /// 处理银行卡号点击
+    private func handleBankCardTapped(cardNumber: String) {
+        let alert = UIAlertController(
+            title: "银行卡号",
+            message: formatBankCard(cardNumber),
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "复制", style: .default) { _ in
+            UIPasteboard.general.string = cardNumber
+        })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    /// 格式化银行卡号（每4位加空格）
+    private func formatBankCard(_ cardNumber: String) -> String {
+        var formatted = ""
+        for (index, char) in cardNumber.enumerated() {
+            if index > 0 && index % 4 == 0 {
+                formatted += " "
+            }
+            formatted.append(char)
+        }
+        return formatted
+    }
+}
+
 // MARK: - Mock 数据
 
 extension VoiceChatViewController {
@@ -521,6 +575,9 @@ extension VoiceChatViewController {
             ("松手发送",   .me,    30),
             ("上滑取消",   .peer,  15),
             ("收到！",     .me,     0),
+            ("这是我的电话：13800138000", .peer, -10),
+            ("访问这个网站 https://www.apple.com 看看", .me, -20),
+            ("我的银行卡号是 6222 0012 3456 7890", .peer, -30),
         ]
         entries.forEach { text, sender, ago in
             appendMessage(.text(text, sender: sender, sentAt: now - ago))

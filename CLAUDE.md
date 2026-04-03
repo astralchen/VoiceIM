@@ -94,6 +94,10 @@ MessageCell (5种)         VoicePlaybackManager
 
 - **文本消息特殊处理**：
   - 菜单包含"复制"选项（复制全部文本到剪贴板）
+  - 支持自动检测并高亮 URL、电话号、银行卡号（16-19位）
+  - 点击高亮内容：URL 在 Safari 打开，电话号调起拨号，银行卡号弹出复制对话框
+  - 使用 `NSDataDetector` 检测 URL/电话，正则表达式检测银行卡号
+  - 点击事件通过 `MessageCellDependencies.onLinkTapped` 回调传递
   - 其他消息类型仅显示撤回/删除
 
 ### 录音状态机

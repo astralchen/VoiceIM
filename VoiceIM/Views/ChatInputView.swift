@@ -26,6 +26,8 @@ final class ChatInputView: UIView {
     var onHeightChange: (() -> Void)?
     /// 扩展功能按钮点击回调（类似 iMessage 的 + 按钮）
     var onExtensionTap: (() -> Void)?
+    /// 扩展功能菜单提供者（返回 UIMenu）
+    var extensionMenuProvider: (() -> UIMenu?)?
 
     // MARK: - 子视图
 
@@ -108,8 +110,11 @@ final class ChatInputView: UIView {
         extensionButton.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
         extensionButton.tintColor = .systemBlue
         extensionButton.translatesAutoresizingMaskIntoConstraints = false
-        extensionButton.addTarget(self, action: #selector(extensionTapped), for: .touchUpInside)
         addSubview(extensionButton)
+
+        // 添加 UIContextMenuInteraction
+        let interaction = UIContextMenuInteraction(delegate: self)
+        extensionButton.addInteraction(interaction)
 
         NSLayoutConstraint.activate([
             extensionButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
@@ -306,6 +311,7 @@ final class ChatInputView: UIView {
     // MARK: - 扩展功能按钮
 
     @objc private func extensionTapped() {
+        // 保留回调以兼容旧代码，但优先使用 UIContextMenuInteraction
         onExtensionTap?()
     }
 
@@ -378,6 +384,18 @@ extension ChatInputView: UITextViewDelegate {
             } completion: { _ in
                 self.onHeightChange?()
             }
+        }
+    }
+}
+
+// MARK: - UIContextMenuInteractionDelegate
+
+extension ChatInputView: UIContextMenuInteractionDelegate {
+
+    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
+                                configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            return self?.extensionMenuProvider?()
         }
     }
 }
