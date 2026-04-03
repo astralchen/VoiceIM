@@ -11,6 +11,8 @@
 		24BF94103557B449A3C24E9A /* Sender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B116B70AF463441C99E8D91 /* Sender.swift */; };
 		409B209AD52A4EDCD0A27FE1 /* ChatInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C1A232CA48A0E6F22AA66D /* ChatInputView.swift */; };
 		46522896B13ECD134635D330 /* ChatBubbleCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580F9DF67CE812B7B1D9174E /* ChatBubbleCell.swift */; };
+		46FE214E286FE9D95C161938 /* KeyboardManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B9BFF8C228B2592BC3E1BE /* KeyboardManager.swift */; };
+		476015470DA1E6E3AB6723F7 /* MessageActionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E9F1D1FA843B3B61439245A /* MessageActionHandler.swift */; };
 		533804A0E73FC812CE52CE82 /* TextMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7963A3657B5E3479294769C9 /* TextMessageCell.swift */; };
 		59BB19A94B08CB85491B1763 /* ImageMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7550DBAF19AB636AAE64D95 /* ImageMessageCell.swift */; };
 		5AC262B68FC83A3946031BC8 /* ImagePreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8752F520CC3796FAD778D37 /* ImagePreviewViewController.swift */; };
@@ -23,11 +25,13 @@
 		9064A4FA4C611889E6B63660 /* VoiceRecordManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A967190F25C5BC5A20D26504 /* VoiceRecordManager.swift */; };
 		B2C9C2ECDB27C52AA5722E6D /* VoiceChatViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6594EF1C574D7F8BD27AE522 /* VoiceChatViewController.swift */; };
 		C4E3095021C37BCD567D3BF5 /* VideoMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B09AF217DB14CB120A07C7F /* VideoMessageCell.swift */; };
+		CA6D560A6F81280000D7AEAD /* MessageDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6A8DBEFCFEF07BA1010BEE /* MessageDataSource.swift */; };
 		CC55D3F85D195A6DEDB6D751 /* RecordingOverlayViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5615CDCD271D478590753D54 /* RecordingOverlayViewController.swift */; };
 		E258B0AB713F285946F96ADD /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F667E00C71EC1040F986296 /* ChatMessage.swift */; };
 		E289BE59A9EA8014C4BE7528 /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A65EF135BBB2C5382358B2 /* ToastView.swift */; };
 		E825D6F4B30B4E95FF522FF4 /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFCC304D89886AC491481403 /* AvatarView.swift */; };
 		E88B71BEB5FE02BA09B5A5EA /* VoiceCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D17C9EF84D9F9D362B6F77 /* VoiceCacheManager.swift */; };
+		EC93F97E11BD6EF9B488AEF5 /* InputCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E77254052D3179F2EA22FD34 /* InputCoordinator.swift */; };
 		F4A6E468A156537796514EDC /* VoicePlaybackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BC1FC5AAE41BCD72109909 /* VoicePlaybackManager.swift */; };
 		F901AD5E56E58DD38057C272 /* VideoPreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4635A7056BFF4341E1D56C4 /* VideoPreviewViewController.swift */; };
 		FBA1ED01242B2F2D95390967 /* VoiceMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41488FDE0AC88B7E19F6DDA5 /* VoiceMessageCell.swift */; };
@@ -37,8 +41,10 @@
 		0B116B70AF463441C99E8D91 /* Sender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sender.swift; sourceTree = "<group>"; };
 		2B09AF217DB14CB120A07C7F /* VideoMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoMessageCell.swift; sourceTree = "<group>"; };
 		41488FDE0AC88B7E19F6DDA5 /* VoiceMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageCell.swift; sourceTree = "<group>"; };
+		4E6A8DBEFCFEF07BA1010BEE /* MessageDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDataSource.swift; sourceTree = "<group>"; };
 		5615CDCD271D478590753D54 /* RecordingOverlayViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverlayViewController.swift; sourceTree = "<group>"; };
 		580F9DF67CE812B7B1D9174E /* ChatBubbleCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBubbleCell.swift; sourceTree = "<group>"; };
+		5E9F1D1FA843B3B61439245A /* MessageActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageActionHandler.swift; sourceTree = "<group>"; };
 		5F667E00C71EC1040F986296 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
 		60A65EF135BBB2C5382358B2 /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
 		6594EF1C574D7F8BD27AE522 /* VoiceChatViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceChatViewController.swift; sourceTree = "<group>"; };
@@ -53,9 +59,11 @@
 		C0C33B6D976E32FDCBC0C4AB /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		C43A131A4DC21A7C2E8C9EE7 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		C965731AD4227230ADCB2E2C /* VoiceIM.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VoiceIM.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D3B9BFF8C228B2592BC3E1BE /* KeyboardManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardManager.swift; sourceTree = "<group>"; };
 		D8752F520CC3796FAD778D37 /* ImagePreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewViewController.swift; sourceTree = "<group>"; };
 		D977382F54C6E581B9DA915C /* PhotoPickerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPickerManager.swift; sourceTree = "<group>"; };
 		DFCC304D89886AC491481403 /* AvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarView.swift; sourceTree = "<group>"; };
+		E77254052D3179F2EA22FD34 /* InputCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputCoordinator.swift; sourceTree = "<group>"; };
 		F4635A7056BFF4341E1D56C4 /* VideoPreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPreviewViewController.swift; sourceTree = "<group>"; };
 		F7550DBAF19AB636AAE64D95 /* ImageMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageMessageCell.swift; sourceTree = "<group>"; };
 		FE150653DE97068F4C160094 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -131,6 +139,10 @@
 		AF20DE62EC9FE085C883BBF6 /* Managers */ = {
 			isa = PBXGroup;
 			children = (
+				E77254052D3179F2EA22FD34 /* InputCoordinator.swift */,
+				D3B9BFF8C228B2592BC3E1BE /* KeyboardManager.swift */,
+				5E9F1D1FA843B3B61439245A /* MessageActionHandler.swift */,
+				4E6A8DBEFCFEF07BA1010BEE /* MessageDataSource.swift */,
 				D977382F54C6E581B9DA915C /* PhotoPickerManager.swift */,
 				84D17C9EF84D9F9D362B6F77 /* VoiceCacheManager.swift */,
 				B9BC1FC5AAE41BCD72109909 /* VoicePlaybackManager.swift */,
@@ -244,7 +256,11 @@
 				E258B0AB713F285946F96ADD /* ChatMessage.swift in Sources */,
 				59BB19A94B08CB85491B1763 /* ImageMessageCell.swift in Sources */,
 				5AC262B68FC83A3946031BC8 /* ImagePreviewViewController.swift in Sources */,
+				EC93F97E11BD6EF9B488AEF5 /* InputCoordinator.swift in Sources */,
+				46FE214E286FE9D95C161938 /* KeyboardManager.swift in Sources */,
+				476015470DA1E6E3AB6723F7 /* MessageActionHandler.swift in Sources */,
 				5E541295513E031D034FBEFA /* MessageCellConfigurable.swift in Sources */,
+				CA6D560A6F81280000D7AEAD /* MessageDataSource.swift in Sources */,
 				67F1E86AD876F33B4E309707 /* PhotoPickerManager.swift in Sources */,
 				169F76BC187D5DF24F703679 /* RecalledMessageCell.swift in Sources */,
 				8A947BBF93712FDD90728DB0 /* RecordingOverlayView.swift in Sources */,
