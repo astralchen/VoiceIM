@@ -2,6 +2,7 @@ import UIKit
 
 /// 文本消息气泡 Cell，继承 ChatBubbleCell 获得时间分隔行、头像和收/发方向布局。
 /// 本类只负责文字内容的显示。
+/// 支持长按显示上下文菜单（复制、撤回、删除）。
 final class TextMessageCell: ChatBubbleCell {
 
     nonisolated static let reuseID = "TextMessageCell"
@@ -18,8 +19,8 @@ final class TextMessageCell: ChatBubbleCell {
     // MARK: - UI 搭建
 
     private func setupTextUI() {
-        label.font          = .systemFont(ofSize: 16)
-        label.textColor     = .label
+        label.font = .systemFont(ofSize: 16)
+        label.textColor = .label
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         bubble.addSubview(label)

@@ -29,8 +29,13 @@ class ChatBubbleCell: UICollectionViewCell {
     /// 失败按钮点击回调：由 ViewController 在 cell provider 中设置，触发重试逻辑
     var onRetryTap: (() -> Void)?
 
-    /// 长按回调：由 ViewController 在 cell provider 中设置，触发撤回/删除菜单
-    var onLongPress: (() -> Void)?
+    /// 上下文菜单提供者：由 ViewController 在 cell provider 中设置，返回菜单配置
+    /// 参数：当前消息对象
+    /// 返回：UIMenu 对象，包含所有菜单项
+    var contextMenuProvider: ((ChatMessage) -> UIMenu?)?
+
+    /// 当前消息对象，用于上下文菜单判断
+    var currentMessage: ChatMessage?
 
     // MARK: - 动态约束
 
@@ -93,9 +98,9 @@ class ChatBubbleCell: UICollectionViewCell {
         failedButton.addTarget(self, action: #selector(failedButtonTapped), for: .touchUpInside)
         contentView.addSubview(failedButton)
 
-        // 添加长按手势
-        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
-        contentView.addGestureRecognizer(longPress)
+        // 添加上下文菜单交互
+        let contextMenuInteraction = UIContextMenuInteraction(delegate: self)
+        bubble.addInteraction(contextMenuInteraction)
 
         // 注意：timeHeightConstraint 初始值为 0，与 isHidden 配合使用。
         // 仅设置 isHidden = true 无法折叠高度——AutoLayout 仍会为隐藏视图保留空间；
@@ -163,6 +168,9 @@ class ChatBubbleCell: UICollectionViewCell {
     ///   - message: 当前消息（提供 sender、sentAt、isOutgoing）
     ///   - showTimeHeader: 由 ViewController 根据与上一条消息的时间差计算后传入
     func configureCommon(message: ChatMessage, showTimeHeader: Bool) {
+        // 保存消息对象供上下文菜单使用
+        currentMessage = message
+
         // 时间分隔行：高度约束驱动折叠/展开，无需手动调整其他视图
         if showTimeHeader {
             timeLabel.text = Self.formatTime(message.sentAt)
@@ -239,11 +247,19 @@ class ChatBubbleCell: UICollectionViewCell {
     @objc private func failedButtonTapped() {
         onRetryTap?()
     }
+}
 
-    // MARK: - 长按手势
+// MARK: - UIContextMenuInteractionDelegate
 
-    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
-        guard gesture.state == .began else { return }
-        onLongPress?()
+extension ChatBubbleCell: UIContextMenuInteractionDelegate {
+
+    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
+                               configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
+        guard let message = currentMessage,
+              let menu = contextMenuProvider?(message) else { return nil }
+
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+            return menu
+        }
     }
 }

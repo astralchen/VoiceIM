@@ -104,13 +104,14 @@ final class VoiceChatViewController: UIViewController {
                 for: indexPath)
             (cell as! any MessageCellConfigurable).configure(with: current, deps: deps)  // swiftlint:disable:this force_cast
 
-            // 设置重试按钮回调
+            // 设置重试按钮和上下文菜单回调
             if let bubbleCell = cell as? ChatBubbleCell {
                 bubbleCell.onRetryTap = { [weak self] in
                     self?.actionHandler.retryMessage(current.id)
                 }
-                bubbleCell.onLongPress = { [weak self] in
-                    self?.actionHandler.handleLongPress(on: current)
+                // 设置上下文菜单提供者
+                bubbleCell.contextMenuProvider = { [weak self] message in
+                    self?.actionHandler.buildContextMenu(for: message)
                 }
             }
 

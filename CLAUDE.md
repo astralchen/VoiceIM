@@ -47,7 +47,7 @@ VoiceChatViewController ──── ChatMessage（数据模型）
       │  DiffableDataSource        │ messages: [ChatMessage]（可变状态）
       │  snapshot（仅存顺序/id）    │ isPlayed/sendStatus 在此更新
       ▼                            ▼
-MessageCell (4种)         VoicePlaybackManager
+MessageCell (5种)         VoicePlaybackManager
   进度滑块 / 红点 / 状态指示器    播放互斥 / 进度回调
 ```
 
@@ -77,6 +77,24 @@ MessageCell (4种)         VoicePlaybackManager
 3. 创建 Cell 实现 `MessageCellConfigurable` 协议
 4. 在 `VoiceChatViewController.setupCollectionView()` 注册 Cell
 5. cell provider 自动通过协议调用 `configure(with:deps:)`
+
+### 上下文菜单（UIContextMenuInteraction）
+
+所有消息类型统一使用 `UIContextMenuInteraction`（iOS 13+）实现长按菜单：
+
+- **ChatBubbleCell（基类）**：
+  - 添加 `UIContextMenuInteraction` 到 `bubble` 视图
+  - 通过 `contextMenuProvider: ((ChatMessage) -> UIMenu?)` 回调获取菜单
+  - 在 `configureCommon` 中保存 `currentMessage` 供菜单使用
+
+- **外部控制菜单内容**：
+  - ViewController 在 cell provider 中设置 `contextMenuProvider`
+  - 委托给 `MessageActionHandler.buildContextMenu(for:)` 构建菜单
+  - 根据消息类型和状态动态显示菜单项（复制/撤回/删除）
+
+- **文本消息特殊处理**：
+  - 菜单包含"复制"选项（复制全部文本到剪贴板）
+  - 其他消息类型仅显示撤回/删除
 
 ### 录音状态机
 
@@ -139,6 +157,15 @@ MessageCell (4种)         VoicePlaybackManager
 4. **页面消失时**（`viewWillDisappear`）：避免后台播放
 5. **应用进入后台时**（`didEnterBackgroundNotification`）：避免后台音频播放
 6. **音频会话被打断时**（`AVAudioSession.interruptionNotification`）：来电、闹钟等系统事件
+
+### 架构重构（VoiceChatViewController）
+
+主控制器从 1052 行精简到 519 行，职责分离为 4 个管理器：
+
+- **MessageDataSource**：封装 `UICollectionViewDiffableDataSource` 和 snapshot 更新逻辑
+- **MessageActionHandler**：统一处理消息交互（删除/撤回/重试/上下文菜单构建）
+- **InputCoordinator**：管理录音状态机、扩展功能菜单、文字/语音/图片/视频发送
+- **KeyboardManager**：处理键盘显示/隐藏时的布局调整和滚动策略
 
 ## 需求文档
 

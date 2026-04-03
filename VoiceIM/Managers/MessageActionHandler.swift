@@ -17,6 +17,12 @@ import UIKit
 /// - 仅自己发送的消息可撤回
 /// - 发送状态必须为 .delivered（已送达）
 /// - 发送时间在 3 分钟以内
+///
+/// # 文本消息复制
+/// 文本消息的复制功能通过 UITextView 的原生文本选择实现：
+/// - 长按文本区域：触发文本选择，显示系统复制菜单
+/// - 长按气泡边缘：触发撤回/删除菜单
+/// - 通过手势代理协调两个长按手势的优先级
 @MainActor
 final class MessageActionHandler {
 
@@ -51,11 +57,61 @@ final class MessageActionHandler {
 
     // MARK: - Public Methods
 
-    /// 处理消息长按事件
+    /// 构建消息上下文菜单
     ///
-    /// 显示 UIAlertController 菜单，根据消息状态动态显示可用操作：
+    /// 根据消息类型和状态动态构建菜单项：
+    /// - 复制：仅文本消息显示
     /// - 撤回：仅自己发送、已送达、3 分钟内的消息
     /// - 删除：所有消息均可删除
+    ///
+    /// - Parameter message: 被长按的消息
+    /// - Returns: UIMenu 对象，包含所有可用的菜单项
+    func buildContextMenu(for message: ChatMessage) -> UIMenu {
+        var actions: [UIMenuElement] = []
+
+        // 文本消息添加"复制"选项
+        if case .text(let content) = message.kind {
+            let copyAction = UIAction(title: "复制",
+                                     image: UIImage(systemName: "doc.on.doc")) { _ in
+                UIPasteboard.general.string = content
+            }
+            actions.append(copyAction)
+        }
+
+        // 撤回条件判断（同时满足）：
+        // 1. 自己发送的消息（isOutgoing = true）
+        // 2. 发送状态为 .delivered（已送达，排除发送中和失败的消息）
+        // 3. 发送时间在 3 分钟以内
+        let canRecall = message.isOutgoing
+            && message.sendStatus == .delivered
+            && Date().timeIntervalSince(message.sentAt) <= 3 * 60
+
+        if canRecall {
+            let recallAction = UIAction(title: "撤回",
+                                       image: UIImage(systemName: "arrow.uturn.backward")) { [weak self] _ in
+                self?.recallMessage(message.id)
+            }
+            actions.append(recallAction)
+        }
+
+        // 删除操作
+        let deleteAction = UIAction(title: "删除",
+                                   image: UIImage(systemName: "trash"),
+                                   attributes: .destructive) { [weak self] _ in
+            self?.deleteMessage(message.id)
+        }
+        actions.append(deleteAction)
+
+        return UIMenu(title: "", children: actions)
+    }
+
+    /// 处理消息长按事件（已废弃，使用 buildContextMenu 替代）
+    ///
+    /// 显示 UIAlertController 菜单，根据消息类型和状态动态显示可用操作：
+    /// - 撤回：仅自己发送、已送达、3 分钟内的消息
+    /// - 删除：所有消息均可删除
+    ///
+    /// 注意：文本消息的复制功能通过 UITextView 的原生文本选择实现，不在此菜单中显示
     ///
     /// - Parameter message: 被长按的消息
     func handleLongPress(on message: ChatMessage) {

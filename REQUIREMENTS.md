@@ -43,6 +43,7 @@
 | 文本消息 | `ChatMessage.Kind.text(String)` | `TextMessageCell` |
 | 图片消息 | `ChatMessage.Kind.image(localURL:remoteURL:)` | `ImageMessageCell` |
 | 视频消息 | `ChatMessage.Kind.video(localURL:remoteURL:duration:)` | `VideoMessageCell` |
+| 撤回消息 | `ChatMessage.Kind.recalled(originalText:)` | `RecalledMessageCell` |
 
 ### 2.2 发送者与方向
 
@@ -215,7 +216,35 @@
 
 ---
 
-## 五、未读提醒
+## 五、文本消息复制
+
+### 5.1 长按上下文菜单
+
+- 长按文本消息触发 `UIContextMenuInteraction`（iOS 13+）
+- 显示上下文菜单，包含：复制、撤回（条件显示）、删除
+- 点击"复制"将全部文本复制到剪贴板
+- 使用系统原生的上下文菜单交互体验
+
+### 5.2 实现细节
+
+**统一交互模式**：
+- 所有消息类型（语音/文本/图片/视频）统一使用 `UIContextMenuInteraction`
+- 通过 `contextMenuProvider: ((ChatMessage) -> UIMenu?)` 回调外部控制菜单内容
+- `MessageActionHandler.buildContextMenu(for:)` 集中构建菜单逻辑
+
+**菜单项构建**：
+- **文本消息**：复制 + 撤回（条件显示）+ 删除
+- **其他消息**：撤回（条件显示）+ 删除
+- 撤回条件：自己发送 + 已送达 + 3 分钟内
+
+**架构设计**：
+- Cell 不决定菜单内容，通过回调将控制权交给外部
+- ViewController 设置 `contextMenuProvider`，委托给 `MessageActionHandler`
+- 职责分离：Cell 负责显示，Handler 负责业务逻辑
+
+---
+
+## 六、未读提醒
 
 - 每条语音消息默认为**未读状态**，在气泡播放按钮右上角显示红色圆点（直径 10pt）。
 - 用户首次点击播放时，红点以 **0.2s 淡出动画**消失，标记为已读。
@@ -224,19 +253,40 @@
 
 ---
 
-## 五、消息删除
+## 七、消息撤回与删除
 
-- 长按语音消息气泡（≥ 0.5s）弹出操作菜单（`UIAlertController`，`.actionSheet` 样式）。
-- 菜单包含两项：**删除**（destructive 样式）和**取消**。
+### 7.1 消息撤回
+
+**撤回条件**（同时满足）：
+- 自己发送的消息（`isOutgoing = true`）
+- 发送状态为 `.delivered`（已送达）
+- 发送时间在 3 分钟以内
+
+**撤回流程**：
+1. 长按消息气泡弹出操作菜单
+2. 选择"撤回"选项
+3. 原消息替换为 `RecalledMessageCell`
+4. 删除原消息的本地文件（语音/图片/视频）
+
+**撤回后展示**：
+- **文本消息撤回**：显示"你撤回了一条消息"，点击可重新编辑发送
+- **其他类型撤回**：仅显示"你撤回了一条消息"，不可重新编辑
+- 保留原消息的时间戳和发送者信息
+- 撤回消息不显示时间分隔行
+
+### 7.2 消息删除
+
+- 长按消息气泡（≥ 0.5s）弹出操作菜单（`UIAlertController`，`.actionSheet` 样式）
+- 菜单包含：**撤回**（符合条件时显示）、**删除**（destructive 样式）、**取消**
 - 确认删除后执行以下步骤：
-  1. 若该消息正在播放，先停止播放，避免播放器持有悬空 URL。
-  2. 从 `messages` 数组中移除该条消息。
-  3. 若存在本地临时录音文件（`localURL`），同步删除磁盘文件。
-  4. `snapshot.deleteItems` + `apply(animatingDifferences: true)` 从列表移除 cell。
+  1. 若该消息正在播放，先停止播放，避免播放器持有悬空 URL
+  2. 从 `messages` 数组中移除该条消息
+  3. 若存在本地临时文件（`localURL`），同步删除磁盘文件
+  4. `snapshot.deleteItems` + `apply(animatingDifferences: true)` 从列表移除 cell
 
 ---
 
-## 六、技术约束
+## 八、技术约束
 
 | 项目 | 要求 |
 |------|------|
@@ -251,7 +301,7 @@
 
 ---
 
-## 七、文件结构
+## 九、文件结构
 
 ```
 VoiceIM/
@@ -274,13 +324,18 @@ VoiceIM/
 ├── Managers/                      # 业务逻辑管理器
 │   ├── VoiceRecordManager.swift   # 录音管理（@MainActor 单例）
 │   ├── VoicePlaybackManager.swift # 播放管理（@MainActor 单例，播放互斥）
-│   └── VoiceCacheManager.swift    # 下载缓存（actor，线程安全）
+│   ├── VoiceCacheManager.swift    # 下载缓存（actor，线程安全）
+│   ├── MessageDataSource.swift    # 消息数据源管理（DiffableDataSource 封装）
+│   ├── MessageActionHandler.swift # 消息交互处理（长按菜单、删除、撤回、重试）
+│   ├── InputCoordinator.swift     # 输入协调器（文字/语音/图片/视频发送）
+│   └── KeyboardManager.swift      # 键盘管理（监听键盘事件、调整布局）
 ├── Cells/                         # 消息 Cell
 │   ├── ChatBubbleCell.swift       # Cell 基类（时间分隔行 + 头像 + 收/发方向约束 + 状态指示器）
 │   ├── VoiceMessageCell.swift     # 语音消息 Cell（继承 ChatBubbleCell）
-│   ├── TextMessageCell.swift      # 文本消息 Cell（继承 ChatBubbleCell）
+│   ├── TextMessageCell.swift      # 文本消息 Cell（继承 ChatBubbleCell，支持长按复制）
 │   ├── ImageMessageCell.swift     # 图片消息 Cell（继承 ChatBubbleCell）
-│   └── VideoMessageCell.swift     # 视频消息 Cell（继承 ChatBubbleCell）
+│   ├── VideoMessageCell.swift     # 视频消息 Cell（继承 ChatBubbleCell）
+│   └── RecalledMessageCell.swift  # 撤回消息 Cell（继承 ChatBubbleCell）
 ├── Protocols/                     # 协议定义
 │   └── MessageCellConfigurable.swift  # Cell 统一配置协议 + MessageCellDependencies
 └── Info.plist                     # 含 NSMicrophoneUsageDescription
@@ -288,7 +343,7 @@ VoiceIM/
 
 ---
 
-## 八、关键设计决策
+## 十、关键设计决策
 
 ### 8.1 DiffableDataSource 与 isPlayed/sendStatus 更新（详见 ChatMessage.swift 注释）
 
@@ -353,6 +408,35 @@ VoiceIM/
 - **Models**: 数据模型（ChatMessage、Sender）
 - **Views**: 视图组件（AvatarView、ChatInputView、RecordingOverlayView、ToastView）
 - **ViewControllers**: 视图控制器（主页面、录音浮层、图片/视频预览）
-- **Managers**: 业务逻辑管理器（录音、播放、缓存）
-- **Cells**: 消息 Cell（基类 + 4 种消息类型）
+- **Managers**: 业务逻辑管理器（录音、播放、缓存、数据源、交互处理、输入协调、键盘管理）
+- **Cells**: 消息 Cell（基类 + 5 种消息类型）
 - **Protocols**: 协议定义（MessageCellConfigurable）
+
+### 8.11 文本消息复制与上下文菜单设计
+
+**统一交互模式（UIContextMenuInteraction）**：
+- 所有消息类型统一使用 `UIContextMenuInteraction`（iOS 13+）
+- 替代原有的 `UILongPressGestureRecognizer` + `UIAlertController` 方案
+- 提供原生 iOS 体验：模糊背景、流畅动画、SF Symbol 图标
+
+**外部控制菜单内容（IoC 模式）**：
+- Cell 通过 `contextMenuProvider: ((ChatMessage) -> UIMenu?)` 回调获取菜单
+- ViewController 设置回调，委托给 `MessageActionHandler.buildContextMenu(for:)`
+- 职责分离：Cell 负责显示，Handler 负责业务逻辑和菜单构建
+
+**菜单项动态构建**：
+- 文本消息：复制（复制全部文本）+ 撤回（条件显示）+ 删除
+- 其他消息：撤回（条件显示）+ 删除
+- 撤回条件：自己发送 + 已送达 + 3 分钟内
+
+**实现细节**：
+- `ChatBubbleCell` 基类添加 `UIContextMenuInteraction` 到 `bubble` 视图
+- 在 `configureCommon` 中保存 `currentMessage` 供菜单使用
+- `MessageActionHandler.buildContextMenu` 根据消息类型和状态构建 `UIMenu`
+- 文本消息使用 `UILabel` 显示（简洁），复制功能在菜单中实现
+
+**优点**：
+- 统一的交互体验，所有消息类型使用相同的长按交互
+- 高度灵活，外部可以完全控制菜单内容和行为
+- 易于扩展，新增菜单项只需修改 `buildContextMenu` 方法
+- Cell 可复用性强，可以在不同场景下使用不同的菜单
