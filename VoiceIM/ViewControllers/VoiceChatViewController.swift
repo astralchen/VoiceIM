@@ -1,5 +1,6 @@
-@preconcurrency import UIKit
+import UIKit
 import AVFoundation
+import MapKit
 
 /// IM 聊天页面（支持语音消息、文本消息、图片消息和视频消息）
 final class VoiceChatViewController: UIViewController {
@@ -77,6 +78,7 @@ final class VoiceChatViewController: UIViewController {
         ImageMessageCell.register(in: collectionView)
         VideoMessageCell.register(in: collectionView)
         RecalledMessageCell.register(in: collectionView)
+        LocationMessageCell.register(in: collectionView)
         view.addSubview(collectionView)
 
         // 点击空白处收起键盘
@@ -98,6 +100,7 @@ final class VoiceChatViewController: UIViewController {
                 voiceDelegate: self,
                 imageDelegate: self,
                 videoDelegate: self,
+                locationDelegate: self,
                 onLinkTapped: { [weak self] url, type in
                     self?.handleLinkTapped(url: url, type: type)
                 })
@@ -220,6 +223,9 @@ final class VoiceChatViewController: UIViewController {
         inputCoordinator.onSendVideo = { [weak self] url, duration in
             self?.appendMessage(.video(localURL: url, duration: duration))
         }
+        inputCoordinator.onSendLocation = { [weak self] latitude, longitude, address in
+            self?.appendMessage(.location(latitude: latitude, longitude: longitude, address: address))
+        }
         inputCoordinator.showToast = { [weak self] message in
             guard let self else { return }
             ToastView.show(message, in: self.view)
@@ -322,6 +328,9 @@ final class VoiceChatViewController: UIViewController {
                 }
             case .recalled:
                 ToastView.show("撤回消息无法重试", in: view)
+                return
+            case .location:
+                ToastView.show("位置消息无法重试", in: view)
                 return
             }
 
@@ -466,6 +475,21 @@ extension VoiceChatViewController: VideoMessageCellDelegate {
     }
 }
 
+// MARK: - LocationMessageCellDelegate
+
+extension VoiceChatViewController: LocationMessageCellDelegate {
+
+    func cellDidTapLocation(_ cell: LocationMessageCell, message: ChatMessage) {
+        guard case .location(let latitude, let longitude, _) = message.kind else { return }
+
+        // 打开系统地图应用
+        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        mapItem.name = "位置"
+        mapItem.openInMaps(launchOptions: [MKLaunchOptionsMapCenterKey: NSValue(mkCoordinate: coordinate)])
+    }
+}
+
 // MARK: - 链接点击处理
 
 extension VoiceChatViewController {
@@ -582,5 +606,8 @@ extension VoiceChatViewController {
         entries.forEach { text, sender, ago in
             appendMessage(.text(text, sender: sender, sentAt: now - ago))
         }
+
+        // 添加位置消息示例（Apple Park）
+        appendMessage(.location(latitude: 37.3349, longitude: -122.0090, address: "Apple Park, Cupertino, CA", sender: .peer, sentAt: now - 40))
     }
 }

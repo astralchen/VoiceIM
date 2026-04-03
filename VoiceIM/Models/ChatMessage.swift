@@ -15,6 +15,7 @@ struct ChatMessage: Sendable, Hashable {
         case image(localURL: URL?, remoteURL: URL?)
         case video(localURL: URL?, remoteURL: URL?, duration: TimeInterval)
         case recalled(originalText: String?)  // 撤回消息，保留原文本用于重新编辑
+        case location(latitude: Double, longitude: Double, address: String?)  // 位置消息
         // 未来可追加：case file(URL, name: String) …
     }
 
@@ -141,6 +142,18 @@ struct ChatMessage: Sendable, Hashable {
                     kind: .recalled(originalText: originalText),
                     sender: sender, sentAt: sentAt, isPlayed: true, sendStatus: .delivered)
     }
+
+    /// 位置消息
+    static func location(latitude: Double,
+                         longitude: Double,
+                         address: String? = nil,
+                         sender: Sender = .me,
+                         sentAt: Date = Date()) -> Self {
+        ChatMessage(id: UUID(),
+                    kind: .location(latitude: latitude, longitude: longitude, address: address),
+                    sender: sender, sentAt: sentAt, isPlayed: true,
+                    sendStatus: sender.id == Sender.me.id ? .sending : .delivered)
+    }
 }
 
 // MARK: - Cell 路由
@@ -158,6 +171,7 @@ extension ChatMessage.Kind {
         case .image: return ImageMessageCell.reuseID
         case .video: return VideoMessageCell.reuseID
         case .recalled: return RecalledMessageCell.reuseID
+        case .location: return LocationMessageCell.reuseID
         }
     }
 }

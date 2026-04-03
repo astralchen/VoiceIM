@@ -71,6 +71,8 @@ final class InputCoordinator {
     var onSendImage: ((URL) -> Void)?
     /// 发送视频消息回调（参数：URL, 时长）
     var onSendVideo: ((URL, TimeInterval) -> Void)?
+    /// 发送位置消息回调（参数：latitude, longitude, address）
+    var onSendLocation: ((Double, Double, String?) -> Void)?
     /// Toast 显示回调
     var showToast: ((String) -> Void)?
 
@@ -118,7 +120,7 @@ final class InputCoordinator {
     /// 使用 UIMenu 提供以下功能：
     /// - 相册：调用 PhotoPickerManager 选择图片/视频
     /// - 拍照：开发中
-    /// - 位置：开发中
+    /// - 位置：发送模拟位置
     private func buildExtensionMenu() -> UIMenu {
         let photoAction = UIAction(title: "相册", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
             self?.openPhotoPicker()
@@ -129,7 +131,7 @@ final class InputCoordinator {
         }
 
         let locationAction = UIAction(title: "位置", image: UIImage(systemName: "location")) { [weak self] _ in
-            self?.showToast?("位置功能开发中")
+            self?.sendRandomLocation()
         }
 
         return UIMenu(children: [photoAction, cameraAction, locationAction])
@@ -140,7 +142,7 @@ final class InputCoordinator {
     /// 显示 UIAlertController 菜单，提供以下功能：
     /// - 相册：调用 PhotoPickerManager 选择图片/视频
     /// - 拍照：开发中
-    /// - 位置：开发中
+    /// - 位置：发送模拟位置
     private func handleExtensionTap() {
         let alert = UIAlertController(title: "扩展功能", message: "选择一个功能", preferredStyle: .actionSheet)
 
@@ -153,7 +155,7 @@ final class InputCoordinator {
         })
 
         alert.addAction(UIAlertAction(title: "位置", style: .default) { [weak self] _ in
-            self?.showToast?("位置功能开发中")
+            self?.sendRandomLocation()
         })
 
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
@@ -183,6 +185,32 @@ final class InputCoordinator {
                 self.showToast?("加载失败")
             }
         }
+    }
+
+    // MARK: - Location
+
+    /// 发送随机位置消息（模拟功能）
+    ///
+    /// 从预设的知名地点列表中随机选择一个位置发送。
+    /// 生产环境应使用 CoreLocation 获取用户实际位置。
+    private func sendRandomLocation() {
+        // 预设的知名地点列表
+        let locations: [(latitude: Double, longitude: Double, address: String)] = [
+            (37.3349, -122.0090, "Apple Park, Cupertino, CA"),
+            (37.7749, -122.4194, "San Francisco, CA"),
+            (40.7128, -74.0060, "New York, NY"),
+            (51.5074, -0.1278, "London, UK"),
+            (48.8566, 2.3522, "Paris, France"),
+            (35.6762, 139.6503, "Tokyo, Japan"),
+            (39.9042, 116.4074, "Beijing, China"),
+            (31.2304, 121.4737, "Shanghai, China"),
+        ]
+
+        // 随机选择一个位置
+        guard let location = locations.randomElement() else { return }
+
+        // 通过回调发送位置消息
+        onSendLocation?(location.latitude, location.longitude, location.address)
     }
 
     // MARK: - Voice Recording

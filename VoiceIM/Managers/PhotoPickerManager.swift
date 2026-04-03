@@ -91,8 +91,22 @@ final class PhotoPickerManager: NSObject {
         config.selectionLimit = selectionLimit
         config.filter = filter
 
+        // iOS 15+ 支持设置首选资源表示模式
+        if #available(iOS 15, *) {
+            config.preferredAssetRepresentationMode = .compatible  // 兼容模式，自动转换为兼容格式
+        }
+
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = self
+
+        // iOS 16+ 支持设置 sheet 尺寸
+        if #available(iOS 16.0, *) {
+            if let sheet = picker.sheetPresentationController {
+                sheet.detents = [.medium(), .large()]  // 默认中等尺寸，用户可拖动到大尺寸
+                sheet.prefersGrabberVisible = true     // 显示顶部拖动条
+                sheet.preferredCornerRadius = 16       // 圆角半径
+            }
+        }
 
         return try await withCheckedThrowingContinuation { continuation in
             self.pickerContinuation = continuation
