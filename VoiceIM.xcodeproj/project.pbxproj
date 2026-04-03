@@ -15,6 +15,7 @@
 		59BB19A94B08CB85491B1763 /* ImageMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7550DBAF19AB636AAE64D95 /* ImageMessageCell.swift */; };
 		5AC262B68FC83A3946031BC8 /* ImagePreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8752F520CC3796FAD778D37 /* ImagePreviewViewController.swift */; };
 		5E541295513E031D034FBEFA /* MessageCellConfigurable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B908CF76DFF91D292CF9D28 /* MessageCellConfigurable.swift */; };
+		67F1E86AD876F33B4E309707 /* PhotoPickerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D977382F54C6E581B9DA915C /* PhotoPickerManager.swift */; };
 		6A6495CF5DA4CE57A952589D /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 99648386B953F022B1C8BB44 /* Launch Screen.storyboard */; };
 		6DB6FE9AE673B5E761C7C573 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C33B6D976E32FDCBC0C4AB /* SceneDelegate.swift */; };
 		7E05D6411412ADE53D0254C1 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C43A131A4DC21A7C2E8C9EE7 /* AppDelegate.swift */; };
@@ -53,6 +54,7 @@
 		C43A131A4DC21A7C2E8C9EE7 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		C965731AD4227230ADCB2E2C /* VoiceIM.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VoiceIM.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D8752F520CC3796FAD778D37 /* ImagePreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewViewController.swift; sourceTree = "<group>"; };
+		D977382F54C6E581B9DA915C /* PhotoPickerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPickerManager.swift; sourceTree = "<group>"; };
 		DFCC304D89886AC491481403 /* AvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarView.swift; sourceTree = "<group>"; };
 		F4635A7056BFF4341E1D56C4 /* VideoPreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPreviewViewController.swift; sourceTree = "<group>"; };
 		F7550DBAF19AB636AAE64D95 /* ImageMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageMessageCell.swift; sourceTree = "<group>"; };
@@ -129,6 +131,7 @@
 		AF20DE62EC9FE085C883BBF6 /* Managers */ = {
 			isa = PBXGroup;
 			children = (
+				D977382F54C6E581B9DA915C /* PhotoPickerManager.swift */,
 				84D17C9EF84D9F9D362B6F77 /* VoiceCacheManager.swift */,
 				B9BC1FC5AAE41BCD72109909 /* VoicePlaybackManager.swift */,
 				A967190F25C5BC5A20D26504 /* VoiceRecordManager.swift */,
@@ -242,6 +245,7 @@
 				59BB19A94B08CB85491B1763 /* ImageMessageCell.swift in Sources */,
 				5AC262B68FC83A3946031BC8 /* ImagePreviewViewController.swift in Sources */,
 				5E541295513E031D034FBEFA /* MessageCellConfigurable.swift in Sources */,
+				67F1E86AD876F33B4E309707 /* PhotoPickerManager.swift in Sources */,
 				169F76BC187D5DF24F703679 /* RecalledMessageCell.swift in Sources */,
 				8A947BBF93712FDD90728DB0 /* RecordingOverlayView.swift in Sources */,
 				CC55D3F85D195A6DEDB6D751 /* RecordingOverlayViewController.swift in Sources */,

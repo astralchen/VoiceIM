@@ -1,6 +1,5 @@
-import UIKit
+@preconcurrency import UIKit
 import AVFoundation
-import PhotosUI
 
 /// IM 聊天页面（支持语音消息、文本消息、图片消息和视频消息）
 final class VoiceChatViewController: UIViewController {
@@ -282,15 +281,25 @@ final class VoiceChatViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    /// 打开系统相册选择器
+    /// 打开系统相册选择器（使用 PhotoPickerManager）
     private func openPhotoPicker() {
-        var config = PHPickerConfiguration()
-        config.selectionLimit = 1
-        config.filter = .any(of: [.images, .videos])
+        Task { @MainActor in
+            do {
+                guard let result = try await PhotoPickerManager.shared.pickMedia(from: self) else {
+                    // 用户取消
+                    return
+                }
 
-        let picker = PHPickerViewController(configuration: config)
-        picker.delegate = self
-        present(picker, animated: true)
+                switch result {
+                case .image(let url):
+                    appendMessage(.image(localURL: url))
+                case .video(let url, let duration):
+                    appendMessage(.video(localURL: url, duration: duration))
+                }
+            } catch {
+                ToastView.show("加载失败", in: view)
+            }
+        }
     }
 
     private func setupPlaybackCallbacks() {
@@ -910,69 +919,6 @@ extension VoiceChatViewController: VideoMessageCellDelegate {
 
         let previewVC = VideoPreviewViewController(videoURL: videoURL)
         present(previewVC, animated: true)
-    }
-}
-
-// MARK: - PHPickerViewControllerDelegate
-
-extension VoiceChatViewController: PHPickerViewControllerDelegate {
-
-    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true)
-
-        guard let result = results.first else { return }
-
-        let itemProvider = result.itemProvider
-
-        // 检查是否为图片
-        if itemProvider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-            itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { [weak self] url, error in
-                guard let self, let url = url, error == nil else { return }
-
-                // 复制到临时目录
-                let tempURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent(UUID().uuidString)
-                    .appendingPathExtension(url.pathExtension)
-
-                do {
-                    try FileManager.default.copyItem(at: url, to: tempURL)
-                    DispatchQueue.main.async {
-                        self.appendMessage(.image(localURL: tempURL))
-                    }
-                } catch {
-                    DispatchQueue.main.async {
-                        ToastView.show("图片加载失败", in: self.view)
-                    }
-                }
-            }
-        }
-        // 检查是否为视频
-        else if itemProvider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
-            itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { [weak self] url, error in
-                guard let self, let url = url, error == nil else { return }
-
-                // 复制到临时目录
-                let tempURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent(UUID().uuidString)
-                    .appendingPathExtension(url.pathExtension)
-
-                do {
-                    try FileManager.default.copyItem(at: url, to: tempURL)
-
-                    // 获取视频时长
-                    let asset = AVAsset(url: tempURL)
-                    let duration = asset.duration.seconds
-
-                    DispatchQueue.main.async {
-                        self.appendMessage(.video(localURL: tempURL, duration: duration))
-                    }
-                } catch {
-                    DispatchQueue.main.async {
-                        ToastView.show("视频加载失败", in: self.view)
-                    }
-                }
-            }
-        }
     }
 }
 
