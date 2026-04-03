@@ -324,6 +324,23 @@ final class ChatInputView: UIView {
     func setTextInputEnabled(_ enabled: Bool) {
         textView.isEditable = enabled
     }
+
+    /// 切换到文字输入模式（用于撤回消息重新编辑）
+    func switchToTextMode() {
+        guard inputMode == .voice else { return }
+        toggleInputMode()
+    }
+
+    /// 设置输入框文本（用于撤回消息重新编辑）
+    func setText(_ text: String) {
+        textView.text = text
+        textViewDidChange(textView)
+    }
+
+    /// 聚焦输入框（用于撤回消息重新编辑）
+    func focusTextInput() {
+        textView.becomeFirstResponder()
+    }
 }
 
 // MARK: - UITextViewDelegate

@@ -75,6 +75,7 @@ final class VoiceChatViewController: UIViewController {
         setupInputView()
         setupPlaybackCallbacks()
         setupKeyboardObservers()
+        setupAppLifecycleObservers()
         insertMockMessages()
     }
 
@@ -86,6 +87,12 @@ final class VoiceChatViewController: UIViewController {
         collectionView.scrollToItem(
             at: IndexPath(item: messages.count - 1, section: 0),
             at: .bottom, animated: false)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // 页面消失时停止播放，避免后台播放或播放器状态与 UI 不同步
+        player.stopCurrent()
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -121,6 +128,7 @@ final class VoiceChatViewController: UIViewController {
         TextMessageCell.register(in: collectionView)
         ImageMessageCell.register(in: collectionView)
         VideoMessageCell.register(in: collectionView)
+        RecalledMessageCell.register(in: collectionView)
         view.addSubview(collectionView)
 
         // DiffableDataSource
@@ -164,6 +172,16 @@ final class VoiceChatViewController: UIViewController {
             if let bubbleCell = cell as? ChatBubbleCell {
                 bubbleCell.onRetryTap = { [weak self] in
                     self?.retryMessage(id: current.id)
+                }
+                bubbleCell.onLongPress = { [weak self] in
+                    self?.handleMessageLongPress(message: current)
+                }
+            }
+
+            // 设置撤回消息点击回调（仅 RecalledMessageCell 需要）
+            if let recalledCell = cell as? RecalledMessageCell {
+                recalledCell.onTap = { [weak self] in
+                    self?.handleRecalledMessageTap(message: current)
                 }
             }
 
@@ -578,6 +596,10 @@ final class VoiceChatViewController: UIViewController {
                 ToastView.show("无法重试：原始文件已丢失", in: view)
                 return
             }
+        case .recalled:
+            // 撤回消息不支持重试
+            ToastView.show("撤回消息无法重试", in: view)
+            return
         }
 
         // 追加新消息并触发发送
@@ -722,6 +744,70 @@ final class VoiceChatViewController: UIViewController {
         dataSource.apply(snapshot, animatingDifferences: true)
     }
 
+    /// 撤回消息：将原消息替换为撤回提示消息
+    ///
+    /// # 撤回逻辑
+    /// 1. 如果正在播放该消息，先停止播放
+    /// 2. 如果是文本消息，保留原文本内容用于重新编辑
+    /// 3. 删除原消息的本地文件（语音、图片、视频）
+    /// 4. 创建撤回提示消息替换原消息
+    ///
+    /// # 注意事项
+    /// - 仅自己发送的消息可以撤回
+    /// - 撤回后的消息保留原时间戳和发送者信息
+    /// - 文本消息撤回后可点击重新编辑
+    private func recallMessage(id: UUID) {
+        // 正在播放该条消息时先停止
+        if player.isPlaying(id: id) { player.stopCurrent() }
+
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        let originalMessage = messages[idx]
+
+        // 只有自己发送的消息才能撤回
+        guard originalMessage.isOutgoing else { return }
+
+        // 提取原文本内容（仅文本消息保留）
+        let originalText: String?
+        if case .text(let content) = originalMessage.kind {
+            originalText = content
+        } else {
+            originalText = nil
+        }
+
+        // 删除原消息的本地文件
+        if let url = originalMessage.localURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+
+        // 创建撤回消息（保留原时间戳和发送者）
+        let recalledMessage = ChatMessage.recalled(
+            originalText: originalText,
+            sender: originalMessage.sender,
+            sentAt: originalMessage.sentAt)
+
+        // 替换消息
+        messages[idx] = recalledMessage
+
+        var snapshot = dataSource.snapshot()
+        snapshot.insertItems([recalledMessage], afterItem: originalMessage)
+        snapshot.deleteItems([originalMessage])
+        dataSource.apply(snapshot, animatingDifferences: true)
+    }
+
+    /// 处理撤回消息点击：如果有原文本，则填充到输入框重新编辑
+    private func handleRecalledMessageTap(message: ChatMessage) {
+        guard case .recalled(let originalText) = message.kind,
+              let text = originalText,
+              message.isOutgoing else { return }
+
+        // 切换到文字输入模式
+        chatInputView.switchToTextMode()
+        // 填充原文本到输入框
+        chatInputView.setText(text)
+        // 聚焦输入框
+        chatInputView.focusTextInput()
+    }
+
     /// 判断当前是否在底部附近（阈值 60pt）
     private var isNearBottom: Bool {
         let cv = collectionView!
@@ -777,8 +863,22 @@ extension VoiceChatViewController: VoiceMessageCellDelegate {
         player.seek(to: progress)
     }
 
-    func cellDidLongPress(_ cell: VoiceMessageCell, message: ChatMessage) {
+    /// 统一处理所有消息类型的长按事件
+    private func handleMessageLongPress(message: ChatMessage) {
         let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+
+        // 只有自己发送且已成功送达的消息才能撤回（排除发送中和失败的消息）
+        // 且发送时间在 3 分钟以内
+        let canRecall = message.isOutgoing
+            && message.sendStatus == .delivered
+            && Date().timeIntervalSince(message.sentAt) <= 3 * 60
+
+        if canRecall {
+            sheet.addAction(UIAlertAction(title: "撤回", style: .default) { [weak self] _ in
+                self?.recallMessage(id: message.id)
+            })
+        }
+
         sheet.addAction(UIAlertAction(title: "删除", style: .destructive) { [weak self] _ in
             self?.deleteMessage(id: message.id)
         })
@@ -959,6 +1059,19 @@ extension VoiceChatViewController {
             selector: #selector(keyboardWillChangeFrame(_:)),
             name: UIResponder.keyboardWillChangeFrameNotification,
             object: nil)
+    }
+
+    private func setupAppLifecycleObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil)
+    }
+
+    @objc private func appDidEnterBackground() {
+        // 应用进入后台时停止播放，避免后台音频播放和资源占用
+        player.stopCurrent()
     }
 
     @objc private func keyboardWillChangeFrame(_ notification: Notification) {

@@ -20,7 +20,14 @@ final class VoicePlaybackManager: NSObject {
     /// 停止/播放完成回调
     var onStop: ((UUID) -> Void)?
 
-    private override init() { super.init() }
+    private override init() {
+        super.init()
+        setupAudioSessionObservers()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 
     // MARK: - 公共接口
 
@@ -82,6 +89,33 @@ final class VoicePlaybackManager: NSObject {
     }
 
     // MARK: - 私有
+
+    private func setupAudioSessionObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioSessionInterruption(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance())
+    }
+
+    @objc private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+        Task { @MainActor in
+            switch type {
+            case .began:
+                // 音频会话被打断（如来电、闹钟），停止播放
+                self.stopCurrent()
+            case .ended:
+                // 打断结束，不自动恢复播放（符合常见 IM 应用行为）
+                break
+            @unknown default:
+                break
+            }
+        }
+    }
 
     private func tick() {
         guard let p = player, let id = playingID else { return }

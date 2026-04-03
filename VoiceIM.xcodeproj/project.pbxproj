@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		169F76BC187D5DF24F703679 /* RecalledMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9FBC89F89203FBE76702E5 /* RecalledMessageCell.swift */; };
 		24BF94103557B449A3C24E9A /* Sender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B116B70AF463441C99E8D91 /* Sender.swift */; };
 		409B209AD52A4EDCD0A27FE1 /* ChatInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C1A232CA48A0E6F22AA66D /* ChatInputView.swift */; };
 		46522896B13ECD134635D330 /* ChatBubbleCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580F9DF67CE812B7B1D9174E /* ChatBubbleCell.swift */; };
@@ -56,6 +57,7 @@
 		F4635A7056BFF4341E1D56C4 /* VideoPreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPreviewViewController.swift; sourceTree = "<group>"; };
 		F7550DBAF19AB636AAE64D95 /* ImageMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageMessageCell.swift; sourceTree = "<group>"; };
 		FE150653DE97068F4C160094 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		FE9FBC89F89203FBE76702E5 /* RecalledMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecalledMessageCell.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -88,6 +90,7 @@
 			children = (
 				580F9DF67CE812B7B1D9174E /* ChatBubbleCell.swift */,
 				F7550DBAF19AB636AAE64D95 /* ImageMessageCell.swift */,
+				FE9FBC89F89203FBE76702E5 /* RecalledMessageCell.swift */,
 				7963A3657B5E3479294769C9 /* TextMessageCell.swift */,
 				2B09AF217DB14CB120A07C7F /* VideoMessageCell.swift */,
 				41488FDE0AC88B7E19F6DDA5 /* VoiceMessageCell.swift */,
@@ -239,6 +242,7 @@
 				59BB19A94B08CB85491B1763 /* ImageMessageCell.swift in Sources */,
 				5AC262B68FC83A3946031BC8 /* ImagePreviewViewController.swift in Sources */,
 				5E541295513E031D034FBEFA /* MessageCellConfigurable.swift in Sources */,
+				169F76BC187D5DF24F703679 /* RecalledMessageCell.swift in Sources */,
 				8A947BBF93712FDD90728DB0 /* RecordingOverlayView.swift in Sources */,
 				CC55D3F85D195A6DEDB6D751 /* RecordingOverlayViewController.swift in Sources */,
 				6DB6FE9AE673B5E761C7C573 /* SceneDelegate.swift in Sources */,

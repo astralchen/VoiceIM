@@ -4,7 +4,6 @@ import UIKit
 protocol VoiceMessageCellDelegate: AnyObject {
     func cellDidTapPlay(_ cell: VoiceMessageCell, message: ChatMessage)
     func cellDidSeek(_ cell: VoiceMessageCell, message: ChatMessage, progress: Float)
-    func cellDidLongPress(_ cell: VoiceMessageCell, message: ChatMessage)
 }
 
 /// 语音消息气泡 Cell，继承 ChatBubbleCell 获得时间分隔行、头像和收/发方向布局。
@@ -79,11 +78,6 @@ final class VoiceMessageCell: ChatBubbleCell {
         seekSlider.addTarget(self, action: #selector(sliderTouchUp),
                              for: [.touchUpInside, .touchUpOutside, .touchCancel])
         bubble.addSubview(seekSlider)
-
-        // 长按气泡触发删除菜单
-        let lp = UILongPressGestureRecognizer(target: self, action: #selector(bubbleLongPressed))
-        lp.minimumPressDuration = 0.5
-        bubble.addGestureRecognizer(lp)
 
         NSLayoutConstraint.activate([
             // 语音气泡最小宽度，保证播放按钮 + 时长标签不被压缩
@@ -205,11 +199,6 @@ final class VoiceMessageCell: ChatBubbleCell {
     @objc private func playTapped() {
         guard let msg = message else { return }
         delegate?.cellDidTapPlay(self, message: msg)
-    }
-
-    @objc private func bubbleLongPressed(_ gesture: UILongPressGestureRecognizer) {
-        guard gesture.state == .began, let msg = message else { return }
-        delegate?.cellDidLongPress(self, message: msg)
     }
 
     // MARK: - 私有工具

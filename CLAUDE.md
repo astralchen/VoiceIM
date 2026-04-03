@@ -111,6 +111,35 @@ MessageCell (4种)         VoicePlaybackManager
 
 开发阶段使用 `simulateSendMessage` 模拟网络请求（70% 成功率），生产环境替换为真实 API。
 
+### 消息撤回
+
+支持撤回自己发送的消息，撤回后显示提示文本：
+
+- **撤回条件**（同时满足）：
+  - 自己发送的消息（`isOutgoing = true`）
+  - 发送状态为 `.delivered`（已送达）
+  - 发送时间在 3 分钟以内
+- **撤回逻辑**：长按消息 → 选择"撤回" → 原消息替换为 `RecalledMessageCell`
+- **文本消息撤回**：保留原文本内容，点击撤回提示可重新编辑发送
+- **其他类型撤回**：仅显示"你撤回了一条消息"，不可重新编辑
+- **实现细节**：
+  - `ChatMessage.Kind.recalled(originalText: String?)` 存储撤回状态
+  - 撤回时删除原消息的本地文件（语音/图片/视频）
+  - 保留原消息的时间戳和发送者信息
+  - 通过 `snapshot.insertItems + deleteItems` 替换消息
+  - 撤回消息不显示时间分隔行
+
+### 音频播放停止场景
+
+以下事件会自动停止音频播放：
+
+1. **开始录音前**：避免录音与播放冲突
+2. **删除正在播放的消息**：避免播放器持有悬空 URL
+3. **播放互斥切换**：点击正在播放的消息停止
+4. **页面消失时**（`viewWillDisappear`）：避免后台播放
+5. **应用进入后台时**（`didEnterBackgroundNotification`）：避免后台音频播放
+6. **音频会话被打断时**（`AVAudioSession.interruptionNotification`）：来电、闹钟等系统事件
+
 ## 需求文档
 
 完整功能需求见 `REQUIREMENTS.md`。

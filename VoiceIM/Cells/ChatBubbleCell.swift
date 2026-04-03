@@ -29,6 +29,9 @@ class ChatBubbleCell: UICollectionViewCell {
     /// 失败按钮点击回调：由 ViewController 在 cell provider 中设置，触发重试逻辑
     var onRetryTap: (() -> Void)?
 
+    /// 长按回调：由 ViewController 在 cell provider 中设置，触发撤回/删除菜单
+    var onLongPress: (() -> Void)?
+
     // MARK: - 动态约束
 
     /// 控制 timeLabel 高度（0 = 隐藏且不占高，28 = 显示）
@@ -89,6 +92,10 @@ class ChatBubbleCell: UICollectionViewCell {
         failedButton.translatesAutoresizingMaskIntoConstraints = false
         failedButton.addTarget(self, action: #selector(failedButtonTapped), for: .touchUpInside)
         contentView.addSubview(failedButton)
+
+        // 添加长按手势
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        contentView.addGestureRecognizer(longPress)
 
         // 注意：timeHeightConstraint 初始值为 0，与 isHidden 配合使用。
         // 仅设置 isHidden = true 无法折叠高度——AutoLayout 仍会为隐藏视图保留空间；
@@ -231,5 +238,12 @@ class ChatBubbleCell: UICollectionViewCell {
 
     @objc private func failedButtonTapped() {
         onRetryTap?()
+    }
+
+    // MARK: - 长按手势
+
+    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+        onLongPress?()
     }
 }

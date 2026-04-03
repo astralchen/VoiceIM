@@ -14,6 +14,7 @@ struct ChatMessage: Sendable, Hashable {
         case text(String)
         case image(localURL: URL?, remoteURL: URL?)
         case video(localURL: URL?, remoteURL: URL?, duration: TimeInterval)
+        case recalled(originalText: String?)  // 撤回消息，保留原文本用于重新编辑
         // 未来可追加：case file(URL, name: String) …
     }
 
@@ -131,6 +132,15 @@ struct ChatMessage: Sendable, Hashable {
                     kind: .video(localURL: nil, remoteURL: remoteURL, duration: duration),
                     sender: sender, sentAt: sentAt, isPlayed: true, sendStatus: .delivered)
     }
+
+    /// 撤回消息（保留原文本用于重新编辑）
+    static func recalled(originalText: String? = nil,
+                         sender: Sender,
+                         sentAt: Date = Date()) -> Self {
+        ChatMessage(id: UUID(),
+                    kind: .recalled(originalText: originalText),
+                    sender: sender, sentAt: sentAt, isPlayed: true, sendStatus: .delivered)
+    }
 }
 
 // MARK: - Cell 路由
@@ -147,6 +157,7 @@ extension ChatMessage.Kind {
         case .text:  return TextMessageCell.reuseID
         case .image: return ImageMessageCell.reuseID
         case .video: return VideoMessageCell.reuseID
+        case .recalled: return RecalledMessageCell.reuseID
         }
     }
 }
