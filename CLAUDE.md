@@ -113,6 +113,32 @@ MessageCell (5种)         VoicePlaybackManager
 
 `VoicePlaybackManager.play(id:url:)` 内部先调 `stopCurrent()`，`onStop` 回调通知旧 cell 重置状态。`VoiceMessageCell` 用 `isSeeking: Bool` 标志在拖拽期间屏蔽 50ms 进度 Timer 的推送，防止 `UISlider.value` 被覆盖。
 
+### 波形视图宽度策略（WaveformProgressView）
+
+语音消息气泡采用**分段增长策略**，模仿微信/Telegram 设计：
+
+- **阶段1（≤10秒）**：线性增长 `width = minimumWidth + linearGrowthRate × duration`
+- **阶段2（>10秒）**：对数增长 `width = widthAtThreshold + 30 × log₂(duration / linearThreshold)`
+
+**关键实现细节**：
+
+1. **布局优先级**：
+   - `waveformView` 设置 `.required` 优先级，严格按 `intrinsicContentSize` 显示
+   - `durationLabel` 设置 `.defaultLow` hugging 优先级，优先吸收额外空间
+   - 防止 waveformView 被 Auto Layout 意外拉伸
+
+2. **波形条数计算**：
+   - `barCount` 基于实际渲染宽度（`bounds.width`）动态计算
+   - 公式：`(bounds.width + barSpacing) / (barWidth + barSpacing)`
+   - 确保波形条填满整个视图
+
+3. **波形数据加载**：
+   - `loadWaveform(from:)` 延迟到布局完成后执行（`DispatchQueue.main.async`）
+   - 提取的采样点数量匹配当前 `barCount`，避免重复采样或跳过数据
+   - 布局变化时自动重新生成波形数据（阈值 5pt）
+
+详细参数说明见 `WaveformProgressView-API.md`。
+
 ### 输入栏模式切换
 
 `ChatInputView` 支持文字/语音模式切换，通过两套约束实现：
