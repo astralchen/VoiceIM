@@ -19,8 +19,8 @@ final class VoiceMessageCell: ChatBubbleCell {
 
     private let playBtn      = UIButton(type: .system)
     private let durationLabel = UILabel()
-    /// 进度滑块，播放时可见，支持拖拽跳转
-    private let seekSlider   = UISlider()
+    /// 音量条进度视图，播放时可见，支持拖拽跳转
+    private let waveformView = WaveformProgressView()
     /// 用户正在拖拽时为 true，屏蔽来自播放器的进度推送，避免抖动
     private var isSeeking    = false
     /// 未播放红点（加到 contentView 层，避免被 bubble.masksToBounds 裁掉一半）
@@ -39,8 +39,8 @@ final class VoiceMessageCell: ChatBubbleCell {
 
     private func setupVoiceUI() {
         // 播放按钮
-        playBtn.setImage(UIImage(systemName: "play.circle.fill"), for: .normal)
-        playBtn.tintColor = .systemBlue
+        playBtn.setImage(UIImage(systemName: "play.fill"), for: .normal)
+        playBtn.tintColor = .label
         playBtn.contentVerticalAlignment   = .fill
         playBtn.contentHorizontalAlignment = .fill
         playBtn.translatesAutoresizingMaskIntoConstraints = false
@@ -53,59 +53,56 @@ final class VoiceMessageCell: ChatBubbleCell {
         unreadDot.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(unreadDot)
 
+        // 音量条进度视图
+        waveformView.barCount = 20
+        waveformView.barWidth = 2
+        waveformView.barSpacing = 3
+        waveformView.playedColor = .label
+        waveformView.unplayedColor = UIColor.label.withAlphaComponent(0.2)
+        waveformView.progressLineColor = .label
+        waveformView.progressLineWidth = 1.5
+        waveformView.translatesAutoresizingMaskIntoConstraints = false
+        // 手指按下：标记用户正在拖拽，暂停接收播放器进度更新
+        waveformView.addTarget(self, action: #selector(waveformTouchDown), for: .touchDown)
+        // 拖动中：实时刷新剩余时长标签
+        waveformView.addTarget(self, action: #selector(waveformValueChanged), for: .valueChanged)
+        // 手指抬起：执行 seek
+        waveformView.addTarget(self, action: #selector(waveformTouchUp), for: .touchUpInside)
+        bubble.addSubview(waveformView)
+
         // 时长标签
-        durationLabel.font      = .monospacedDigitSystemFont(ofSize: 14, weight: .medium)
+        durationLabel.font      = .monospacedDigitSystemFont(ofSize: 15, weight: .regular)
         durationLabel.textColor = .label
         durationLabel.translatesAutoresizingMaskIntoConstraints = false
         bubble.addSubview(durationLabel)
 
-        // 进度滑块（播放时才显示）
-        seekSlider.minimumValue          = 0
-        seekSlider.maximumValue          = 1
-        seekSlider.value                 = 0
-        seekSlider.minimumTrackTintColor = .systemBlue
-        seekSlider.maximumTrackTintColor = UIColor.label.withAlphaComponent(0.12)
-        let thumbSize = CGSize(width: 14, height: 14)
-        seekSlider.setThumbImage(makeThumbImage(size: thumbSize, color: .systemBlue), for: .normal)
-        seekSlider.setThumbImage(makeThumbImage(size: thumbSize, color: .systemBlue), for: .highlighted)
-        seekSlider.isHidden = true
-        seekSlider.translatesAutoresizingMaskIntoConstraints = false
-        // 手指按下：标记用户正在拖拽，暂停接收播放器进度更新
-        seekSlider.addTarget(self, action: #selector(sliderTouchDown), for: .touchDown)
-        // 拖动中：实时刷新剩余时长标签
-        seekSlider.addTarget(self, action: #selector(sliderValueChanged), for: .valueChanged)
-        // 手指抬起（无论是否在 slider 内）：执行 seek
-        seekSlider.addTarget(self, action: #selector(sliderTouchUp),
-                             for: [.touchUpInside, .touchUpOutside, .touchCancel])
-        bubble.addSubview(seekSlider)
-
         NSLayoutConstraint.activate([
-            // 语音气泡最小宽度，保证播放按钮 + 时长标签不被压缩
-            bubble.widthAnchor.constraint(greaterThanOrEqualToConstant: 130),
+            // 语音气泡最小宽度
+            bubble.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
+            bubble.heightAnchor.constraint(equalToConstant: 60),
 
             // 播放按钮
-            playBtn.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: 10),
+            playBtn.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: 16),
             playBtn.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
-            playBtn.widthAnchor.constraint(equalToConstant: 32),
-            playBtn.heightAnchor.constraint(equalToConstant: 32),
+            playBtn.widthAnchor.constraint(equalToConstant: 24),
+            playBtn.heightAnchor.constraint(equalToConstant: 24),
 
             // 未读红点：直径 10pt，吸附在播放按钮右上角
-            // unreadDot 与 playBtn 同属 contentView 下，跨子树约束合法
             unreadDot.widthAnchor.constraint(equalToConstant: 10),
             unreadDot.heightAnchor.constraint(equalToConstant: 10),
             unreadDot.centerXAnchor.constraint(equalTo: playBtn.trailingAnchor, constant: -2),
             unreadDot.centerYAnchor.constraint(equalTo: playBtn.topAnchor, constant: 2),
 
-            // 时长标签
-            durationLabel.leadingAnchor.constraint(equalTo: playBtn.trailingAnchor, constant: 8),
-            durationLabel.topAnchor.constraint(equalTo: bubble.topAnchor, constant: 10),
-            durationLabel.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -12),
+            // 音量条进度视图
+            waveformView.leadingAnchor.constraint(equalTo: playBtn.trailingAnchor, constant: 12),
+            waveformView.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
+            waveformView.heightAnchor.constraint(equalToConstant: 32),
+            waveformView.trailingAnchor.constraint(equalTo: durationLabel.leadingAnchor, constant: -12),
 
-            // 进度滑块
-            seekSlider.leadingAnchor.constraint(equalTo: playBtn.trailingAnchor, constant: 4),
-            seekSlider.topAnchor.constraint(equalTo: durationLabel.bottomAnchor, constant: 2),
-            seekSlider.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -8),
-            seekSlider.bottomAnchor.constraint(equalTo: bubble.bottomAnchor, constant: -8),
+            // 时长标签
+            durationLabel.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -16),
+            durationLabel.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
+            durationLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 24),
         ])
     }
 
@@ -125,10 +122,26 @@ final class VoiceMessageCell: ChatBubbleCell {
     ///   - !isUnread && !unreadDot.isHidden（未读 → 已读）：播放淡出动画
     ///   - 其余情况（初次配置、已读 → 已读、cell 复用）：直接 isHidden 赋值，无动画
     ///   这样既保留了淡出效果，又避免了 cell 复用时错误触发动画。
+    ///
+    /// ## 红点显示规则
+    ///   - 仅对方发送的消息（!isOutgoing）且未播放（!isPlayed）时显示红点
+    ///   - 自己发送的消息不显示红点
     func configure(with message: ChatMessage, isPlaying: Bool, progress: Float, isUnread: Bool) {
         self.message = message
+
+        // 加载音频波形数据
+        if case .voice(let localURL, let remoteURL, _) = message.kind {
+            if let url = localURL ?? remoteURL {
+                waveformView.loadWaveform(from: url, targetBarCount: 20)
+            }
+        }
+
         applyPlayState(isPlaying: isPlaying, progress: progress)
-        if !isUnread && !unreadDot.isHidden {
+
+        // 自己发送的消息不显示红点
+        let shouldShowUnread = isUnread && !message.isOutgoing
+
+        if !shouldShowUnread && !unreadDot.isHidden {
             // 未读 → 已读：淡出动画
             UIView.animate(withDuration: 0.2) {
                 self.unreadDot.alpha = 0
@@ -138,24 +151,23 @@ final class VoiceMessageCell: ChatBubbleCell {
             }
         } else {
             // 初次配置 / 复用 / 已读状态：直接显隐，不触发动画
-            unreadDot.isHidden = !isUnread
+            unreadDot.isHidden = !shouldShowUnread
         }
     }
 
     func applyPlayState(isPlaying: Bool, progress: Float) {
-        let icon = isPlaying ? "stop.circle.fill" : "play.circle.fill"
+        let icon = isPlaying ? "pause.fill" : "play.fill"
         playBtn.setImage(UIImage(systemName: icon), for: .normal)
-        seekSlider.isHidden = !isPlaying
 
         if isPlaying {
-            // 用户拖拽期间不更新滑块位置，避免抖动；但始终刷新剩余时长
+            // 用户拖拽期间不更新进度，避免抖动；但始终刷新剩余时长
             if !isSeeking {
-                seekSlider.value = progress
+                waveformView.progress = progress
             }
-            updateRemainingLabel(progress: seekSlider.value)
+            updateRemainingLabel(progress: waveformView.progress)
         } else {
             isSeeking = false
-            seekSlider.value = 0
+            waveformView.progress = 0
             showTotalDuration()
         }
     }
@@ -175,23 +187,23 @@ final class VoiceMessageCell: ChatBubbleCell {
         durationLabel.text = String(format: "%d\"", max(secs, 0))
     }
 
-    // MARK: - Slider 事件
+    // MARK: - Waveform 事件
 
-    @objc private func sliderTouchDown() {
+    @objc private func waveformTouchDown() {
         isSeeking = true
     }
 
-    @objc private func sliderValueChanged() {
-        updateRemainingLabel(progress: seekSlider.value)
+    @objc private func waveformValueChanged() {
+        updateRemainingLabel(progress: waveformView.progress)
     }
 
-    @objc private func sliderTouchUp() {
+    @objc private func waveformTouchUp() {
         guard let msg = message else {
             isSeeking = false
             return
         }
         isSeeking = false
-        delegate?.cellDidSeek(self, message: msg, progress: seekSlider.value)
+        delegate?.cellDidSeek(self, message: msg, progress: waveformView.progress)
     }
 
     // MARK: - 播放按钮事件
@@ -199,16 +211,6 @@ final class VoiceMessageCell: ChatBubbleCell {
     @objc private func playTapped() {
         guard let msg = message else { return }
         delegate?.cellDidTapPlay(self, message: msg)
-    }
-
-    // MARK: - 私有工具
-
-    private func makeThumbImage(size: CGSize, color: UIColor) -> UIImage {
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { ctx in
-            color.setFill()
-            ctx.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
-        }
     }
 }
 
@@ -221,9 +223,11 @@ extension VoiceMessageCell: MessageCellConfigurable {
         configureCommon(message: message, showTimeHeader: deps.showTimeHeader)
         // 再更新语音播放状态
         delegate = deps.voiceDelegate
+        let isPlaying = deps.isPlaying(message.id)
+        let progress = isPlaying ? deps.currentProgress(message.id) : 0
         configure(with: message,
-                  isPlaying: deps.isPlaying(message.id),
-                  progress: 0,
+                  isPlaying: isPlaying,
+                  progress: progress,
                   isUnread: !message.isPlayed)
     }
 }
