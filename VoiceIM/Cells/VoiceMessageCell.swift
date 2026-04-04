@@ -61,9 +61,9 @@ final class VoiceMessageCell: ChatBubbleCell {
         waveformView.unplayedColor = UIColor.label.withAlphaComponent(0.2)
         waveformView.progressLineColor = .label
         waveformView.progressLineWidth = 1.5
-        waveformView.widthPerSecond = 10  // 每秒 10pt，降低宽度增长速度
-        waveformView.minimumWidth = 60    // 最小宽度 60pt
-        waveformView.maximumWidth = 150   // 最大宽度 150pt
+        waveformView.widthPerSecond = 12  // 每秒 12pt，会自动调整 min/max 为 48/120
+        waveformView.setContentHuggingPriority(.required, for: .horizontal)
+        waveformView.setContentCompressionResistancePriority(.required, for: .horizontal)
         waveformView.translatesAutoresizingMaskIntoConstraints = false
         // 手指按下：标记用户正在拖拽，暂停接收播放器进度更新
         waveformView.addTarget(self, action: #selector(waveformTouchDown), for: .touchDown)
@@ -80,13 +80,10 @@ final class VoiceMessageCell: ChatBubbleCell {
         bubble.addSubview(durationLabel)
 
         NSLayoutConstraint.activate([
-            // 语音气泡最小宽度
-            bubble.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
-            bubble.heightAnchor.constraint(equalToConstant: 44),
-
             // 播放按钮
             playBtn.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: 16),
-            playBtn.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
+            playBtn.topAnchor.constraint(equalTo: bubble.topAnchor, constant: 12),
+            playBtn.bottomAnchor.constraint(equalTo: bubble.bottomAnchor, constant: -12),
             playBtn.widthAnchor.constraint(equalToConstant: 20),
             playBtn.heightAnchor.constraint(equalToConstant: 20),
 
@@ -100,9 +97,9 @@ final class VoiceMessageCell: ChatBubbleCell {
             waveformView.leadingAnchor.constraint(equalTo: playBtn.trailingAnchor, constant: 12),
             waveformView.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
             waveformView.heightAnchor.constraint(equalToConstant: 24),
-            waveformView.trailingAnchor.constraint(equalTo: durationLabel.leadingAnchor, constant: -12),
 
             // 时长标签
+            durationLabel.leadingAnchor.constraint(equalTo: waveformView.trailingAnchor, constant: 12),
             durationLabel.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -16),
             durationLabel.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
             durationLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 24),
@@ -132,10 +129,18 @@ final class VoiceMessageCell: ChatBubbleCell {
     func configure(with message: ChatMessage, isPlaying: Bool, progress: Float, isUnread: Bool) {
         self.message = message
 
-        // 加载音频波形数据
+        // 设置音频时长并加载波形数据
         if case .voice(let localURL, let remoteURL, let duration) = message.kind {
+            // 重要：必须先设置时长，再加载波形数据
+            // 原因：
+            // 1. audioDuration 会触发 invalidateIntrinsicContentSize()，立即更新视图宽度
+            // 2. loadWaveform 是异步的，完成后只更新波形绘制，不影响布局
+            // 3. 这个顺序避免了布局闪烁（先显示默认宽度，再跳变到正确宽度）
+            waveformView.audioDuration = duration
+
+            // 异步加载真实音频波形数据（不阻塞 UI）
             if let url = localURL ?? remoteURL {
-                waveformView.loadWaveform(from: url, targetBarCount: 20, duration: duration)
+                waveformView.loadWaveform(from: url, targetBarCount: 20)
             }
         }
 

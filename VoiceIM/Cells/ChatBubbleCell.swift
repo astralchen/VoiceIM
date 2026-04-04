@@ -71,6 +71,8 @@ class ChatBubbleCell: UICollectionViewCell {
         timeLabel.font = .systemFont(ofSize: 12)
         timeLabel.textColor = .secondaryLabel
         timeLabel.textAlignment = .center
+        timeLabel.setContentHuggingPriority(.required, for: .vertical)
+        timeLabel.setContentCompressionResistancePriority(.required, for: .vertical)
         timeLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(timeLabel)
 
@@ -106,6 +108,7 @@ class ChatBubbleCell: UICollectionViewCell {
         // 仅设置 isHidden = true 无法折叠高度——AutoLayout 仍会为隐藏视图保留空间；
         // 必须同时将高度约束改为 0，才能让 cell 高度随之收缩，不留空白。
         timeHeightConstraint = timeLabel.heightAnchor.constraint(equalToConstant: 0)
+        timeHeightConstraint.priority = .required
 
         // 常驻约束（收发共用，整个 cell 生命周期内不变）
         NSLayoutConstraint.activate([

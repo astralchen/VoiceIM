@@ -40,22 +40,55 @@ final class WaveformProgressView: UIControl {
 
     /// 音频时长（秒），用于计算视图宽度
     var audioDuration: TimeInterval = 0 {
-        didSet { invalidateIntrinsicContentSize() }
+        didSet {
+            audioDuration = max(0, audioDuration)  // 确保非负
+            invalidateIntrinsicContentSize()
+        }
     }
 
     /// 每秒对应的宽度（pt）
-    var widthPerSecond: CGFloat = 10 {
-        didSet { invalidateIntrinsicContentSize() }
+    /// 修改此值时会自动按比例调整 minimumWidth 和 maximumWidth 以保持逻辑一致性
+    /// 默认：最小宽度对应 4 秒，最大宽度对应 10 秒
+    ///
+    /// 示例：widthPerSecond 从 12 改为 15
+    /// - 比例：15/12 = 1.25
+    /// - minimumWidth：48 × 1.25 = 60
+    /// - maximumWidth：120 × 1.25 = 150
+    var widthPerSecond: CGFloat = 12 {
+        didSet {
+            let oldValue = oldValue
+            widthPerSecond = max(1, widthPerSecond)  // 至少 1pt/秒
+
+            // 自动按比例调整 min/max，保持时长对应关系不变
+            // 这样外部只需修改 widthPerSecond，无需手动计算 min/max
+            if widthPerSecond != oldValue && oldValue > 0 {
+                let ratio = widthPerSecond / oldValue
+                minimumWidth = minimumWidth * ratio
+                maximumWidth = maximumWidth * ratio
+            }
+            invalidateIntrinsicContentSize()
+        }
     }
 
-    /// 最小宽度
-    var minimumWidth: CGFloat = 60 {
-        didSet { invalidateIntrinsicContentSize() }
+    /// 最小宽度（对应约 4 秒语音）
+    /// 建议值：widthPerSecond × 4
+    var minimumWidth: CGFloat = 48 {
+        didSet {
+            minimumWidth = max(20, minimumWidth)  // 至少 20pt
+            if minimumWidth > maximumWidth {
+                maximumWidth = minimumWidth  // 确保最小值不大于最大值
+            }
+            invalidateIntrinsicContentSize()
+        }
     }
 
-    /// 最大宽度
-    var maximumWidth: CGFloat = 150 {
-        didSet { invalidateIntrinsicContentSize() }
+    /// 最大宽度（对应约 10 秒语音）
+    /// 建议值：widthPerSecond × 10
+    var maximumWidth: CGFloat = 120 {
+        didSet {
+            maximumWidth = max(minimumWidth, maximumWidth)  // 确保不小于最小值
+            invalidateIntrinsicContentSize()
+        }
     }
 
     /// 已播放部分颜色（亮色）
@@ -113,6 +146,9 @@ final class WaveformProgressView: UIControl {
     // MARK: - 固有尺寸
 
     override var intrinsicContentSize: CGSize {
+        // 根据音频时长动态计算宽度
+        // 公式：宽度 = 时长（秒） × 每秒宽度（pt）
+        // 限制：在 minimumWidth 和 maximumWidth 之间
         let calculatedWidth = CGFloat(audioDuration) * widthPerSecond
         let clampedWidth = max(minimumWidth, min(maximumWidth, calculatedWidth))
         return CGSize(width: clampedWidth, height: UIView.noIntrinsicMetric)
@@ -129,12 +165,13 @@ final class WaveformProgressView: UIControl {
         let totalBarWidth = CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barSpacing
         let availableWidth = rect.width
 
-        // 如果计算的总宽度超过可用宽度，居中显示；否则填充满
+        // 如果计算的总宽度超过可用宽度，自动减少音量条数量填充满视图
+        // 否则居中显示
         let actualBarCount: Int
         let startX: CGFloat
 
         if totalBarWidth > availableWidth {
-            // 根据可用宽度计算实际能显示的音量条数量
+            // 根据可用宽度计算实际能显示的音量条数量（至少 10 个）
             actualBarCount = max(10, Int((availableWidth + barSpacing) / (barWidth + barSpacing)))
             startX = 0
         } else {
@@ -148,7 +185,7 @@ final class WaveformProgressView: UIControl {
         for i in 0..<actualBarCount {
             let x = startX + CGFloat(i) * (barWidth + barSpacing)
 
-            // 从原始波形数据中采样
+            // 从原始波形数据中按比例采样，保持波形形状
             let sampleIndex = min(i * barHeights.count / actualBarCount, barHeights.count - 1)
             let normalizedHeight = barHeights[sampleIndex]
             let barHeight = maxHeight * normalizedHeight
@@ -174,6 +211,7 @@ final class WaveformProgressView: UIControl {
             let lineX = startX + actualTotalWidth * CGFloat(progress)
 
             // 创建渐变色（中间深，两端淡）
+            // 这样的渐变效果更自然，不会显得突兀
             let colorSpace = CGColorSpaceCreateDeviceRGB()
             let colors = [
                 progressLineColor.withAlphaComponent(0.3).cgColor,  // 顶部淡
@@ -192,7 +230,7 @@ final class WaveformProgressView: UIControl {
             ctx.setLineWidth(progressLineWidth)
             ctx.setLineCap(.round)
 
-            // 裁剪区域为线条路径
+            // 裁剪区域为线条路径，确保渐变只应用在线条上
             let linePath = CGMutablePath()
             linePath.move(to: CGPoint(x: lineX, y: 0))
             linePath.addLine(to: CGPoint(x: lineX, y: maxHeight))
@@ -200,7 +238,7 @@ final class WaveformProgressView: UIControl {
             ctx.replacePathWithStrokedPath()
             ctx.clip()
 
-            // 绘制渐变
+            // 绘制垂直渐变
             let startPoint = CGPoint(x: lineX, y: 0)
             let endPoint = CGPoint(x: lineX, y: maxHeight)
             ctx.drawLinearGradient(gradient, start: startPoint, end: endPoint, options: [])
@@ -282,9 +320,8 @@ final class WaveformProgressView: UIControl {
     /// - Parameters:
     ///   - audioURL: 音频文件 URL
     ///   - targetBarCount: 目标音量条数量（默认 20）
-    ///   - duration: 音频时长（用于计算视图宽度）
-    func loadWaveform(from audioURL: URL, targetBarCount: Int = 20, duration: TimeInterval) {
-        self.audioDuration = duration
+    /// - Note: 调用前需先设置 audioDuration 以触发宽度更新
+    func loadWaveform(from audioURL: URL, targetBarCount: Int = 20) {
         Task.detached(priority: .userInitiated) {
             guard let samples = await self.extractAudioSamples(from: audioURL, targetCount: targetBarCount) else {
                 return
@@ -297,7 +334,7 @@ final class WaveformProgressView: UIControl {
 
     /// 提取音频采样数据
     private func extractAudioSamples(from url: URL, targetCount: Int) async -> [CGFloat]? {
-        guard let asset = try? AVURLAsset(url: url) else { return nil }
+        let asset = AVURLAsset(url: url)
 
         // 获取音频轨道
         guard let track = try? await asset.loadTracks(withMediaType: .audio).first else {
