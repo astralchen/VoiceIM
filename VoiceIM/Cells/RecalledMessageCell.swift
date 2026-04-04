@@ -52,8 +52,8 @@ final class RecalledMessageCell: UICollectionViewCell, MessageCellConfigurable {
 
     // MARK: - MessageCellConfigurable
 
-    func configure(with message: ChatMessage, deps: MessageCellDependencies) {
-        // 撤回消息不显示时间分隔行
+    func configure(with message: ChatMessage, deps: MessageCellDependencies, context: MessageCellContext) {
+        // 撤回消息不显示时间分隔行（忽略 context.showTimeHeader）
 
         // 撤回提示文本
         guard case .recalled(let originalText) = message.kind else { return }
@@ -70,5 +70,14 @@ final class RecalledMessageCell: UICollectionViewCell, MessageCellConfigurable {
             recallLabel.text = "对方撤回了一条消息"
             recallLabel.textColor = .tertiaryLabel
         }
+    }
+}
+
+// MARK: - RecalledMessageCellInteractive
+
+extension RecalledMessageCell: RecalledMessageCellInteractive {
+
+    func setTapHandler(_ handler: @escaping () -> Void) {
+        onTap = handler
     }
 }

@@ -167,9 +167,9 @@ final class TextMessageCell: ChatBubbleCell {
 
 extension TextMessageCell: MessageCellConfigurable {
 
-    func configure(with message: ChatMessage, deps: MessageCellDependencies) {
+    func configure(with message: ChatMessage, deps: MessageCellDependencies, context: MessageCellContext) {
         // 先调基类方法更新时间分隔行、头像和收/发方向
-        configureCommon(message: message, showTimeHeader: deps.showTimeHeader)
+        configureCommon(message: message, showTimeHeader: context.showTimeHeader)
         // 设置链接点击回调
         onLinkTapped = deps.onLinkTapped
         // 再更新文字内容

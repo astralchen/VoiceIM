@@ -193,9 +193,9 @@ final class ImageMessageCell: ChatBubbleCell {
 
 extension ImageMessageCell: MessageCellConfigurable {
 
-    func configure(with message: ChatMessage, deps: MessageCellDependencies) {
+    func configure(with message: ChatMessage, deps: MessageCellDependencies, context: MessageCellContext) {
         // 先调基类方法更新时间分隔行、头像和收/发方向
-        configureCommon(message: message, showTimeHeader: deps.showTimeHeader)
+        configureCommon(message: message, showTimeHeader: context.showTimeHeader)
 
         // 设置 delegate
         delegate = deps.imageDelegate

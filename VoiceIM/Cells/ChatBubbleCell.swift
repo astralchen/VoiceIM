@@ -128,8 +128,8 @@ class ChatBubbleCell: UICollectionViewCell {
             bubble.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: 4),
             bubble.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -6),
             bubble.widthAnchor.constraint(greaterThanOrEqualToConstant: 50),
-            // 最大宽度 65%，为头像（36pt）+ 两侧边距（各 8pt）共 52pt 留出空间
-            bubble.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.65),
+            // 最大宽度 75%（语音消息需要更多空间），为头像（36pt）+ 两侧边距（各 8pt）共 52pt 留出空间
+            bubble.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.75),
 
             // 状态指示器：位于气泡左侧（发送方消息）
             statusIndicator.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
@@ -264,5 +264,18 @@ extension ChatBubbleCell: UIContextMenuInteractionDelegate {
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
             return menu
         }
+    }
+}
+
+// MARK: - MessageCellInteractive
+
+extension ChatBubbleCell: MessageCellInteractive {
+
+    func setRetryHandler(_ handler: @escaping () -> Void) {
+        onRetryTap = handler
+    }
+
+    func setContextMenuProvider(_ provider: @escaping (ChatMessage) -> UIMenu?) {
+        contextMenuProvider = provider
     }
 }

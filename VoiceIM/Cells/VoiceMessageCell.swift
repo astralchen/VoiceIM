@@ -53,15 +53,20 @@ final class VoiceMessageCell: ChatBubbleCell {
         unreadDot.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(unreadDot)
 
-        // 音量条进度视图
-        waveformView.barCount = 20
+        // 音量条进度视图配置
         waveformView.barWidth = 2
         waveformView.barSpacing = 3
         waveformView.playedColor = .label
         waveformView.unplayedColor = UIColor.label.withAlphaComponent(0.2)
         waveformView.progressLineColor = .label
         waveformView.progressLineWidth = 1.5
-        waveformView.widthPerSecond = 12  // 每秒 12pt，会自动调整 min/max 为 48/120
+
+        // 宽度增长策略（模仿微信）
+        waveformView.minimumWidth = 60        // 1-2秒短语音最小宽度
+        waveformView.maximumWidth = 200       // 60秒长语音最大宽度
+        waveformView.linearThreshold = 10     // 10秒内线性增长
+        waveformView.linearGrowthRate = 10    // 线性阶段每秒增加10pt
+
         waveformView.setContentHuggingPriority(.required, for: .horizontal)
         waveformView.setContentCompressionResistancePriority(.required, for: .horizontal)
         waveformView.translatesAutoresizingMaskIntoConstraints = false
@@ -76,6 +81,8 @@ final class VoiceMessageCell: ChatBubbleCell {
         // 时长标签
         durationLabel.font      = .monospacedDigitSystemFont(ofSize: 15, weight: .regular)
         durationLabel.textColor = .label
+        durationLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        durationLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         durationLabel.translatesAutoresizingMaskIntoConstraints = false
         bubble.addSubview(durationLabel)
 
@@ -140,7 +147,10 @@ final class VoiceMessageCell: ChatBubbleCell {
 
             // 异步加载真实音频波形数据（不阻塞 UI）
             if let url = localURL ?? remoteURL {
-                waveformView.loadWaveform(from: url, targetBarCount: 20)
+                // 延迟到下一个 runloop，确保布局完成后再加载波形
+                DispatchQueue.main.async {
+                    self.waveformView.loadWaveform(from: url)
+                }
             }
         }
 
@@ -226,9 +236,9 @@ final class VoiceMessageCell: ChatBubbleCell {
 
 extension VoiceMessageCell: MessageCellConfigurable {
 
-    func configure(with message: ChatMessage, deps: MessageCellDependencies) {
+    func configure(with message: ChatMessage, deps: MessageCellDependencies, context: MessageCellContext) {
         // 先调基类方法更新时间分隔行、头像和收/发方向
-        configureCommon(message: message, showTimeHeader: deps.showTimeHeader)
+        configureCommon(message: message, showTimeHeader: context.showTimeHeader)
         // 再更新语音播放状态
         delegate = deps.voiceDelegate
         let isPlaying = deps.isPlaying(message.id)

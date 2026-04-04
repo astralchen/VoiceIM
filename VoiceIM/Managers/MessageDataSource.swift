@@ -39,16 +39,19 @@ final class MessageDataSource {
     /// cell provider 从此数组查询最新状态，而非依赖 snapshot 内的旧值。
     private(set) var messages: [ChatMessage] = []
 
-    // MARK: - Callbacks
+    // MARK: - Dependencies
 
-    /// Cell 配置回调（由 ViewController 提供依赖注入）
+    /// Cell 依赖注入（由 ViewController 提供）
     ///
-    /// 参数：
-    /// - collectionView: UICollectionView 实例
-    /// - indexPath: cell 的 IndexPath
-    /// - current: 当前消息（从 messages 数组取最新状态）
-    /// - prev: 上一条消息（用于判断是否显示时间分隔行）
-    var cellConfigurator: ((UICollectionView, IndexPath, ChatMessage, ChatMessage?) -> UICollectionViewCell)?
+    /// 包含播放状态查询、事件委托等外部依赖，
+    /// 通过 `MessageCellDependencies` 统一传递给各类型 Cell。
+    var dependencies: MessageCellDependencies?
+
+    /// Cell 配置回调（用于设置重试按钮、上下文菜单等交互）
+    ///
+    /// 在 MessageDataSource 完成基础配置后调用，
+    /// 由 ViewController 设置 Cell 的事件回调（重试、撤回点击等）。
+    var cellConfigurator: ((UICollectionViewCell, ChatMessage) -> Void)?
 
     // MARK: - Init
 
@@ -63,18 +66,35 @@ final class MessageDataSource {
         dataSource = UICollectionViewDiffableDataSource<Section, ChatMessage>(
             collectionView: collectionView
         ) { [weak self] cv, indexPath, message in
-            guard let self else { return UICollectionViewCell() }
+            guard let self, let deps = self.dependencies else { return UICollectionViewCell() }
+
             // 从 messages 数组取最新状态，保证 isPlayed 等可变字段始终准确
             let current = self.messages.first(where: { $0.id == message.id }) ?? message
 
             // 计算上一条消息（用于时间分隔行判断）
-            // 注意：用 UUID 查找而非直接使用 indexPath.item，
-            // 因为 prependMessages 插入历史消息时，CompositionalLayout 的 cell provider
-            // 可能在下一个布局周期被再次调用，UUID 查找方式更健壮。
             let currentIdx = self.messages.firstIndex(where: { $0.id == current.id }) ?? indexPath.item
             let prev = currentIdx > 0 ? self.messages[currentIdx - 1] : nil
 
-            return self.cellConfigurator?(cv, indexPath, current, prev) ?? UICollectionViewCell()
+            // 构造动态上下文
+            let context = MessageCellContext(
+                showTimeHeader: prev.map { current.sentAt.timeIntervalSince($0.sentAt) > 5 * 60 } ?? true,
+                previousMessage: prev
+            )
+
+            // 统一配置：通过协议调用，无需类型判断
+            let cell = cv.dequeueReusableCell(
+                withReuseIdentifier: current.kind.reuseID,
+                for: indexPath
+            )
+
+            if let configurableCell = cell as? MessageCellConfigurable {
+                configurableCell.configure(with: current, deps: deps, context: context)
+            }
+
+            // 调用外部配置回调（设置交互事件）
+            self.cellConfigurator?(cell, current)
+
+            return cell
         }
 
         // 初始化空 snapshot

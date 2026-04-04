@@ -86,50 +86,37 @@ final class VoiceChatViewController: UIViewController {
         tap.cancelsTouchesInView = false  // 不阻止 cell 点击事件
         collectionView.addGestureRecognizer(tap)
 
-        // 配置 MessageDataSource 的 cell provider
-        messageDataSource.cellConfigurator = { [weak self] cv, indexPath, current, prev in
-            guard let self else { return UICollectionViewCell() }
+        // 配置 MessageDataSource 的依赖注入
+        messageDataSource.dependencies = MessageCellDependencies(
+            isPlaying: player.isPlaying(id:),
+            currentProgress: player.currentProgress(for:),
+            voiceDelegate: self,
+            imageDelegate: self,
+            videoDelegate: self,
+            locationDelegate: self,
+            onLinkTapped: { [weak self] url, type in
+                self?.handleLinkTapped(url: url, type: type)
+            })
 
-            // 计算是否显示时间分隔行
-            let showTime = prev.map { current.sentAt.timeIntervalSince($0.sentAt) > 5 * 60 } ?? true
+        // 配置 Cell 回调（重试按钮、上下文菜单、撤回消息点击）
+        messageDataSource.cellConfigurator = { [weak self] cell, message in
+            guard let self else { return }
 
-            // 构造依赖包
-            let deps = MessageCellDependencies(
-                isPlaying: self.player.isPlaying(id:),
-                currentProgress: self.player.currentProgress(for:),
-                showTimeHeader: showTime,
-                voiceDelegate: self,
-                imageDelegate: self,
-                videoDelegate: self,
-                locationDelegate: self,
-                onLinkTapped: { [weak self] url, type in
-                    self?.handleLinkTapped(url: url, type: type)
-                })
-
-            let cell = cv.dequeueReusableCell(
-                withReuseIdentifier: current.kind.reuseID,
-                for: indexPath)
-            (cell as! any MessageCellConfigurable).configure(with: current, deps: deps)  // swiftlint:disable:this force_cast
-
-            // 设置重试按钮和上下文菜单回调
-            if let bubbleCell = cell as? ChatBubbleCell {
-                bubbleCell.onRetryTap = { [weak self] in
-                    self?.actionHandler.retryMessage(current.id)
+            // 通过协议统一设置交互回调
+            if let interactiveCell = cell as? MessageCellInteractive {
+                interactiveCell.setRetryHandler { [weak self] in
+                    self?.actionHandler.retryMessage(message.id)
                 }
-                // 设置上下文菜单提供者
-                bubbleCell.contextMenuProvider = { [weak self] message in
-                    self?.actionHandler.buildContextMenu(for: message)
+                interactiveCell.setContextMenuProvider { [weak self] msg in
+                    self?.actionHandler.buildContextMenu(for: msg)
                 }
             }
 
-            // 设置撤回消息点击回调
-            if let recalledCell = cell as? RecalledMessageCell {
-                recalledCell.onTap = { [weak self] in
-                    self?.actionHandler.handleRecalledMessageTap(current)
+            if let recalledCell = cell as? RecalledMessageCellInteractive {
+                recalledCell.setTapHandler { [weak self] in
+                    self?.actionHandler.handleRecalledMessageTap(message)
                 }
             }
-
-            return cell
         }
 
         // 下拉加载历史

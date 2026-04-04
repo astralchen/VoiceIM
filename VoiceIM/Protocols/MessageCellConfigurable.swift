@@ -15,8 +15,11 @@ protocol MessageCellConfigurable: AnyObject {
     static var reuseID: String { get }
 
     /// 统一配置入口，由 cell provider 调用。
-    /// `deps` 提供 cell 可能需要的外部上下文，不需要的字段直接忽略即可。
-    func configure(with message: ChatMessage, deps: MessageCellDependencies)
+    /// - Parameters:
+    ///   - message: 消息数据
+    ///   - deps: 外部依赖（播放状态、委托等，整个会话期间不变）
+    ///   - context: 动态上下文（每个 Cell 计算时确定的状态信息）
+    func configure(with message: ChatMessage, deps: MessageCellDependencies, context: MessageCellContext)
 }
 
 extension MessageCellConfigurable where Self: UICollectionViewCell {
@@ -28,11 +31,12 @@ extension MessageCellConfigurable where Self: UICollectionViewCell {
     }
 }
 
-/// Cell provider 向各 Cell 传递的外部依赖。
+/// Cell 外部依赖（静态，整个会话期间不变）
 ///
-/// 将依赖聚合成一个结构体，好处是：
-/// - 协议签名固定为 `configure(with:deps:)`，不因新依赖而变动
-/// - 各 Cell 只取用自己关心的字段，其余字段无需感知
+/// 包含 Cell 需要的外部能力：
+/// - 播放状态查询函数
+/// - 各类型 Cell 的事件委托
+/// - 链接点击回调
 struct MessageCellDependencies {
 
     /// 查询某条消息当前是否正在播放
@@ -40,9 +44,6 @@ struct MessageCellDependencies {
 
     /// 查询某条消息当前播放进度（0~1）
     let currentProgress: (UUID) -> Float
-
-    /// 是否在此消息上方显示时间分隔行（由 ViewController 根据与上一条消息的时间差计算）
-    let showTimeHeader: Bool
 
     /// 语音 Cell 的事件委托；文本等其他 Cell 忽略此字段
     weak var voiceDelegate: VoiceMessageCellDelegate?
@@ -58,4 +59,18 @@ struct MessageCellDependencies {
 
     /// 文本消息中链接点击的回调（URL、电话号等）
     var onLinkTapped: ((URL, NSTextCheckingResult.CheckingType) -> Void)?
+}
+
+/// Cell 动态上下文（每个 Cell 计算时确定）
+///
+/// 包含根据当前消息和上下文计算出的状态信息：
+/// - 是否显示时间分隔行
+/// - 上一条消息（用于某些 Cell 的特殊逻辑）
+struct MessageCellContext {
+
+    /// 是否在此消息上方显示时间分隔行（由 MessageDataSource 根据与上一条消息的时间差计算）
+    let showTimeHeader: Bool
+
+    /// 上一条消息（可选，用于某些 Cell 需要对比上下文的场景）
+    let previousMessage: ChatMessage?
 }
