@@ -33,6 +33,31 @@ final class WaveformProgressView: UIControl {
         didSet { setNeedsDisplay() }
     }
 
+    /// 音量条圆角半径
+    var barCornerRadius: CGFloat = 1 {
+        didSet { setNeedsDisplay() }
+    }
+
+    /// 音频时长（秒），用于计算视图宽度
+    var audioDuration: TimeInterval = 0 {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+
+    /// 每秒对应的宽度（pt）
+    var widthPerSecond: CGFloat = 10 {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+
+    /// 最小宽度
+    var minimumWidth: CGFloat = 60 {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+
+    /// 最大宽度
+    var maximumWidth: CGFloat = 150 {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+
     /// 已播放部分颜色（亮色）
     var playedColor: UIColor = .systemBlue {
         didSet { setNeedsDisplay() }
@@ -85,6 +110,14 @@ final class WaveformProgressView: UIControl {
         addGestureRecognizer(tap)
     }
 
+    // MARK: - 固有尺寸
+
+    override var intrinsicContentSize: CGSize {
+        let calculatedWidth = CGFloat(audioDuration) * widthPerSecond
+        let clampedWidth = max(minimumWidth, min(maximumWidth, calculatedWidth))
+        return CGSize(width: clampedWidth, height: UIView.noIntrinsicMetric)
+    }
+
     // MARK: - 绘制
 
     override func draw(_ rect: CGRect) {
@@ -92,35 +125,87 @@ final class WaveformProgressView: UIControl {
 
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
 
-        let totalWidth = CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barSpacing
-        let startX = (rect.width - totalWidth) / 2
+        // 根据视图实际宽度动态调整音量条数量，保持合理的视觉密度
+        let totalBarWidth = CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barSpacing
+        let availableWidth = rect.width
+
+        // 如果计算的总宽度超过可用宽度，居中显示；否则填充满
+        let actualBarCount: Int
+        let startX: CGFloat
+
+        if totalBarWidth > availableWidth {
+            // 根据可用宽度计算实际能显示的音量条数量
+            actualBarCount = max(10, Int((availableWidth + barSpacing) / (barWidth + barSpacing)))
+            startX = 0
+        } else {
+            actualBarCount = barCount
+            startX = (availableWidth - totalBarWidth) / 2
+        }
+
         let maxHeight = rect.height
 
         // 绘制音量条
-        for i in 0..<barCount {
+        for i in 0..<actualBarCount {
             let x = startX + CGFloat(i) * (barWidth + barSpacing)
-            let normalizedHeight = barHeights[i]
+
+            // 从原始波形数据中采样
+            let sampleIndex = min(i * barHeights.count / actualBarCount, barHeights.count - 1)
+            let normalizedHeight = barHeights[sampleIndex]
             let barHeight = maxHeight * normalizedHeight
             let y = (maxHeight - barHeight) / 2
 
             let barRect = CGRect(x: x, y: y, width: barWidth, height: barHeight)
 
             // 判断当前音量条是否在已播放区域
-            let barProgress = CGFloat(i) / CGFloat(barCount - 1)
+            let barProgress = CGFloat(i) / CGFloat(actualBarCount - 1)
             let color = barProgress < CGFloat(progress) ? playedColor : unplayedColor
 
             ctx.setFillColor(color.cgColor)
-            ctx.fill(barRect)
+
+            // 绘制圆角矩形
+            let path = UIBezierPath(roundedRect: barRect, cornerRadius: barCornerRadius)
+            ctx.addPath(path.cgPath)
+            ctx.fillPath()
         }
 
-        // 绘制进度指示线
+        // 绘制进度指示线（使用渐变色：顶部和底部淡，中间深）
         if progress > 0 {
-            let lineX = startX + totalWidth * CGFloat(progress)
-            ctx.setStrokeColor(progressLineColor.cgColor)
+            let actualTotalWidth = CGFloat(actualBarCount) * barWidth + CGFloat(actualBarCount - 1) * barSpacing
+            let lineX = startX + actualTotalWidth * CGFloat(progress)
+
+            // 创建渐变色（中间深，两端淡）
+            let colorSpace = CGColorSpaceCreateDeviceRGB()
+            let colors = [
+                progressLineColor.withAlphaComponent(0.3).cgColor,  // 顶部淡
+                progressLineColor.cgColor,                          // 中间深
+                progressLineColor.withAlphaComponent(0.3).cgColor   // 底部淡
+            ] as CFArray
+
+            let locations: [CGFloat] = [0.0, 0.5, 1.0]
+
+            guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: locations) else {
+                return
+            }
+
+            // 绘制渐变线
+            ctx.saveGState()
             ctx.setLineWidth(progressLineWidth)
-            ctx.move(to: CGPoint(x: lineX, y: 0))
-            ctx.addLine(to: CGPoint(x: lineX, y: maxHeight))
-            ctx.strokePath()
+            ctx.setLineCap(.round)
+
+            // 裁剪区域为线条路径
+            let linePath = CGMutablePath()
+            linePath.move(to: CGPoint(x: lineX, y: 0))
+            linePath.addLine(to: CGPoint(x: lineX, y: maxHeight))
+            ctx.addPath(linePath)
+            ctx.replacePathWithStrokedPath()
+            ctx.clip()
+
+            // 绘制渐变
+            let startPoint = CGPoint(x: lineX, y: 0)
+            let endPoint = CGPoint(x: lineX, y: maxHeight)
+            ctx.drawLinearGradient(gradient, start: startPoint, end: endPoint, options: [])
+
+            ctx.restoreGState()
         }
     }
 
@@ -152,10 +237,24 @@ final class WaveformProgressView: UIControl {
     }
 
     private func updateProgress(at location: CGPoint) {
-        let totalWidth = CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barSpacing
-        let startX = (bounds.width - totalWidth) / 2
+        // 根据实际绘制的音量条计算进度
+        let totalBarWidth = CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barSpacing
+        let availableWidth = bounds.width
+
+        let actualBarCount: Int
+        let startX: CGFloat
+
+        if totalBarWidth > availableWidth {
+            actualBarCount = max(10, Int((availableWidth + barSpacing) / (barWidth + barSpacing)))
+            startX = 0
+        } else {
+            actualBarCount = barCount
+            startX = (availableWidth - totalBarWidth) / 2
+        }
+
+        let actualTotalWidth = CGFloat(actualBarCount) * barWidth + CGFloat(actualBarCount - 1) * barSpacing
         let relativeX = location.x - startX
-        let newProgress = Float(relativeX / totalWidth)
+        let newProgress = Float(relativeX / actualTotalWidth)
         progress = max(0, min(1, newProgress))
     }
 
@@ -183,7 +282,9 @@ final class WaveformProgressView: UIControl {
     /// - Parameters:
     ///   - audioURL: 音频文件 URL
     ///   - targetBarCount: 目标音量条数量（默认 20）
-    func loadWaveform(from audioURL: URL, targetBarCount: Int = 20) {
+    ///   - duration: 音频时长（用于计算视图宽度）
+    func loadWaveform(from audioURL: URL, targetBarCount: Int = 20, duration: TimeInterval) {
+        self.audioDuration = duration
         Task.detached(priority: .userInitiated) {
             guard let samples = await self.extractAudioSamples(from: audioURL, targetCount: targetBarCount) else {
                 return

@@ -61,6 +61,9 @@ final class VoiceMessageCell: ChatBubbleCell {
         waveformView.unplayedColor = UIColor.label.withAlphaComponent(0.2)
         waveformView.progressLineColor = .label
         waveformView.progressLineWidth = 1.5
+        waveformView.widthPerSecond = 10  // 每秒 10pt，降低宽度增长速度
+        waveformView.minimumWidth = 60    // 最小宽度 60pt
+        waveformView.maximumWidth = 150   // 最大宽度 150pt
         waveformView.translatesAutoresizingMaskIntoConstraints = false
         // 手指按下：标记用户正在拖拽，暂停接收播放器进度更新
         waveformView.addTarget(self, action: #selector(waveformTouchDown), for: .touchDown)
@@ -79,13 +82,13 @@ final class VoiceMessageCell: ChatBubbleCell {
         NSLayoutConstraint.activate([
             // 语音气泡最小宽度
             bubble.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
-            bubble.heightAnchor.constraint(equalToConstant: 60),
+            bubble.heightAnchor.constraint(equalToConstant: 44),
 
             // 播放按钮
             playBtn.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: 16),
             playBtn.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
-            playBtn.widthAnchor.constraint(equalToConstant: 24),
-            playBtn.heightAnchor.constraint(equalToConstant: 24),
+            playBtn.widthAnchor.constraint(equalToConstant: 20),
+            playBtn.heightAnchor.constraint(equalToConstant: 20),
 
             // 未读红点：直径 10pt，吸附在播放按钮右上角
             unreadDot.widthAnchor.constraint(equalToConstant: 10),
@@ -96,7 +99,7 @@ final class VoiceMessageCell: ChatBubbleCell {
             // 音量条进度视图
             waveformView.leadingAnchor.constraint(equalTo: playBtn.trailingAnchor, constant: 12),
             waveformView.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
-            waveformView.heightAnchor.constraint(equalToConstant: 32),
+            waveformView.heightAnchor.constraint(equalToConstant: 24),
             waveformView.trailingAnchor.constraint(equalTo: durationLabel.leadingAnchor, constant: -12),
 
             // 时长标签
@@ -130,9 +133,9 @@ final class VoiceMessageCell: ChatBubbleCell {
         self.message = message
 
         // 加载音频波形数据
-        if case .voice(let localURL, let remoteURL, _) = message.kind {
+        if case .voice(let localURL, let remoteURL, let duration) = message.kind {
             if let url = localURL ?? remoteURL {
-                waveformView.loadWaveform(from: url, targetBarCount: 20)
+                waveformView.loadWaveform(from: url, targetBarCount: 20, duration: duration)
             }
         }
 
