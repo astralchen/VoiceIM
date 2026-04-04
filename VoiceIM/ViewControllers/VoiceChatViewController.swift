@@ -96,6 +96,7 @@ final class VoiceChatViewController: UIViewController {
             // 构造依赖包
             let deps = MessageCellDependencies(
                 isPlaying: self.player.isPlaying(id:),
+                currentProgress: self.player.currentProgress(for:),
                 showTimeHeader: showTime,
                 voiceDelegate: self,
                 imageDelegate: self,

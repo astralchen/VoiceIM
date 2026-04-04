@@ -38,6 +38,9 @@ struct MessageCellDependencies {
     /// 查询某条消息当前是否正在播放
     let isPlaying: (UUID) -> Bool
 
+    /// 查询某条消息当前播放进度（0~1）
+    let currentProgress: (UUID) -> Float
+
     /// 是否在此消息上方显示时间分隔行（由 ViewController 根据与上一条消息的时间差计算）
     let showTimeHeader: Bool
 

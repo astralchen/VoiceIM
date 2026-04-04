@@ -72,6 +72,14 @@ final class VoicePlaybackManager: NSObject {
         playingID == id
     }
 
+    /// 获取当前播放进度（0~1），如果没有播放或不是指定消息则返回 0
+    func currentProgress(for id: UUID) -> Float {
+        guard playingID == id,
+              let p = player,
+              p.duration > 0 else { return 0 }
+        return Float(p.currentTime / p.duration)
+    }
+
     /// 跳转到指定进度（0~1）
     func seek(to progress: Float) {
         guard let p = player, p.duration > 0 else { return }
