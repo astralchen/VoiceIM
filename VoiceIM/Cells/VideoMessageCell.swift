@@ -16,6 +16,9 @@ final class VideoMessageCell: ChatBubbleCell {
     weak var delegate: VideoMessageCellDelegate?
     private(set) var message: ChatMessage?
 
+    /// 当前加载的视频缩略图（供转场动画使用）
+    var currentThumbnailImage: UIImage? { thumbnailView.image }
+
     // MARK: - 子视图
 
     private let thumbnailView = UIImageView()

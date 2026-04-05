@@ -16,6 +16,9 @@ final class ImageMessageCell: ChatBubbleCell {
     weak var delegate: ImageMessageCellDelegate?
     private(set) var message: ChatMessage?
 
+    /// 当前加载的图片（供转场动画使用）
+    var currentImage: UIImage? { imageView.image }
+
     // MARK: - 子视图
 
     private let imageView = UIImageView()

@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		16028A6ACF13090E19FD9988 /* AudioServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E326609DA59981CB15435A96 /* AudioServices.swift */; };
 		169F76BC187D5DF24F703679 /* RecalledMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9FBC89F89203FBE76702E5 /* RecalledMessageCell.swift */; };
+		21B71EA8D2A70E70770502C7 /* ZoomTransitionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAF4A66FA66CE82F54E67D80 /* ZoomTransitionController.swift */; };
 		23B1E6E0CBE79986E9FECD1D /* ChatError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BACD30F535B667AE19DED0 /* ChatError.swift */; };
 		24BF94103557B449A3C24E9A /* Sender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B116B70AF463441C99E8D91 /* Sender.swift */; };
 		28EAD5D969A12EA148C6FF2C /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3013B60CE7DBA4F5D4F00B26 /* Logger.swift */; };
@@ -54,6 +55,7 @@
 		E88B71BEB5FE02BA09B5A5EA /* VoiceCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D17C9EF84D9F9D362B6F77 /* VoiceCacheManager.swift */; };
 		EB052985D76F52CE24FE7316 /* MessageRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F937545ECF81A8B8130DDF /* MessageRepositoryTests.swift */; };
 		EC93F97E11BD6EF9B488AEF5 /* InputCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E77254052D3179F2EA22FD34 /* InputCoordinator.swift */; };
+		EE3FC9AEE2CEBCBCE3A75BFE /* ZoomTransition+UIViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0003C34E680C402F7EDC3AA5 /* ZoomTransition+UIViewController.swift */; };
 		F4A6E468A156537796514EDC /* VoicePlaybackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BC1FC5AAE41BCD72109909 /* VoicePlaybackManager.swift */; };
 		F901AD5E56E58DD38057C272 /* VideoPreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4635A7056BFF4341E1D56C4 /* VideoPreviewViewController.swift */; };
 		FBA1ED01242B2F2D95390967 /* VoiceMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41488FDE0AC88B7E19F6DDA5 /* VoiceMessageCell.swift */; };
@@ -70,6 +72,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0003C34E680C402F7EDC3AA5 /* ZoomTransition+UIViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ZoomTransition+UIViewController.swift"; sourceTree = "<group>"; };
 		0B116B70AF463441C99E8D91 /* Sender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sender.swift; sourceTree = "<group>"; };
 		102220184BADC48F3B5937D4 /* LoggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoggerTests.swift; sourceTree = "<group>"; };
 		202375FF5D1E7C999D14F0CD /* AppDependencies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDependencies.swift; sourceTree = "<group>"; };
@@ -111,6 +114,7 @@
 		D3B9BFF8C228B2592BC3E1BE /* KeyboardManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardManager.swift; sourceTree = "<group>"; };
 		D8752F520CC3796FAD778D37 /* ImagePreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewViewController.swift; sourceTree = "<group>"; };
 		D977382F54C6E581B9DA915C /* PhotoPickerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPickerManager.swift; sourceTree = "<group>"; };
+		DAF4A66FA66CE82F54E67D80 /* ZoomTransitionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomTransitionController.swift; sourceTree = "<group>"; };
 		DFCC304D89886AC491481403 /* AvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarView.swift; sourceTree = "<group>"; };
 		E326609DA59981CB15435A96 /* AudioServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioServices.swift; sourceTree = "<group>"; };
 		E4ED75DD67BBD7EE821DB1F1 /* MessageStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageStorage.swift; sourceTree = "<group>"; };
@@ -146,6 +150,7 @@
 				99B7D3FCB99814169B31D5EF /* Models */,
 				8DCD7F4E87C85285780AA3BF /* Protocols */,
 				9F8645324F9B387B2B1E6330 /* Repositories */,
+				B34D9525D2070C80F0B59001 /* Transitions */,
 				AA0116E4300FA05588E69EE4 /* ViewControllers */,
 				E9111A02B9CB68779E5C9280 /* ViewModels */,
 				ED0F7CF1551C46492656F7E6 /* Views */,
@@ -266,6 +271,15 @@
 				A967190F25C5BC5A20D26504 /* VoiceRecordManager.swift */,
 			);
 			path = Managers;
+			sourceTree = "<group>";
+		};
+		B34D9525D2070C80F0B59001 /* Transitions */ = {
+			isa = PBXGroup;
+			children = (
+				0003C34E680C402F7EDC3AA5 /* ZoomTransition+UIViewController.swift */,
+				DAF4A66FA66CE82F54E67D80 /* ZoomTransitionController.swift */,
+			);
+			path = Transitions;
 			sourceTree = "<group>";
 		};
 		BAB90879A7210C32CA947DFA /* Core */ = {
@@ -482,6 +496,8 @@
 				F4A6E468A156537796514EDC /* VoicePlaybackManager.swift in Sources */,
 				9064A4FA4C611889E6B63660 /* VoiceRecordManager.swift in Sources */,
 				D72BC6CAC0CBB02180E14018 /* WaveformProgressView.swift in Sources */,
+				EE3FC9AEE2CEBCBCE3A75BFE /* ZoomTransition+UIViewController.swift in Sources */,
+				21B71EA8D2A70E70770502C7 /* ZoomTransitionController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

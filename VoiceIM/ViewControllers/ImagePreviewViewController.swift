@@ -1,29 +1,30 @@
 import UIKit
 
-/// 图片预览页面，支持缩放和关闭
+/// 图片预览页面，支持缩放和苹果相册风格的转场动画
+///
+/// 实现 `ZoomTransitionTarget` 后，`ZoomTransitionController` 会自动为本页面
+/// 安装下滑关闭手势，无需在此添加任何转场相关代码。
 @MainActor
 final class ImagePreviewViewController: UIViewController {
 
     private let imageURL: URL?
     private let image: UIImage?
-    private let scrollView = UIScrollView()
-    private let imageView = UIImageView()
+    private let scrollView  = UIScrollView()
+    private let imageView   = UIImageView()
     private let closeButton = UIButton(type: .system)
 
     // MARK: - 初始化
 
     init(image: UIImage, imageURL: URL) {
-        self.image = image
+        self.image    = image
         self.imageURL = imageURL
         super.init(nibName: nil, bundle: nil)
-        modalPresentationStyle = .fullScreen
     }
 
     init(imageURL: URL) {
-        self.image = nil
+        self.image    = nil
         self.imageURL = imageURL
         super.init(nibName: nil, bundle: nil)
-        modalPresentationStyle = .fullScreen
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -40,24 +41,21 @@ final class ImagePreviewViewController: UIViewController {
     // MARK: - UI 搭建
 
     private func setupUI() {
-        // ScrollView 用于支持缩放
-        scrollView.delegate = self
-        scrollView.minimumZoomScale = 1.0
-        scrollView.maximumZoomScale = 3.0
-        scrollView.showsHorizontalScrollIndicator = false
-        scrollView.showsVerticalScrollIndicator = false
+        scrollView.delegate                             = self
+        scrollView.minimumZoomScale                     = 1.0
+        scrollView.maximumZoomScale                     = 3.0
+        scrollView.showsHorizontalScrollIndicator       = false
+        scrollView.showsVerticalScrollIndicator         = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scrollView)
 
-        // ImageView
         imageView.contentMode = .scaleAspectFit
         imageView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.addSubview(imageView)
 
-        // 关闭按钮
         closeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
-        closeButton.tintColor = .white
-        closeButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        closeButton.tintColor          = .white
+        closeButton.backgroundColor    = UIColor.black.withAlphaComponent(0.5)
         closeButton.layer.cornerRadius = 20
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
@@ -82,7 +80,6 @@ final class ImagePreviewViewController: UIViewController {
             closeButton.heightAnchor.constraint(equalToConstant: 40),
         ])
 
-        // 双击缩放
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
         doubleTap.numberOfTapsRequired = 2
         scrollView.addGestureRecognizer(doubleTap)
@@ -91,23 +88,16 @@ final class ImagePreviewViewController: UIViewController {
     // MARK: - 加载图片
 
     private func loadImage() {
-        // 如果已经有图片，直接显示
-        if let image = image {
+        if let image {
             imageView.image = image
             return
         }
-
-        // 否则从 URL 加载
-        guard let imageURL = imageURL else { return }
-
+        guard let imageURL else { return }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self,
-                  let data = try? Data(contentsOf: imageURL),
+                  let data  = try? Data(contentsOf: imageURL),
                   let image = UIImage(data: data) else { return }
-
-            DispatchQueue.main.async {
-                self.imageView.image = image
-            }
+            DispatchQueue.main.async { self.imageView.image = image }
         }
     }
 
@@ -122,17 +112,42 @@ final class ImagePreviewViewController: UIViewController {
             scrollView.setZoomScale(1.0, animated: true)
         } else {
             let location = gesture.location(in: imageView)
-            let rect = CGRect(x: location.x - 50, y: location.y - 50, width: 100, height: 100)
+            let rect     = CGRect(x: location.x - 50, y: location.y - 50, width: 100, height: 100)
             scrollView.zoom(to: rect, animated: true)
         }
+    }
+}
+
+// MARK: - ZoomTransitionTarget
+
+extension ImagePreviewViewController: ZoomTransitionTarget {
+
+    var zoomContentView: UIView { imageView }
+
+    /// 图片在当前 view 中 aspect-fit 后的实际展示区域
+    var zoomDisplayFrame: CGRect {
+        guard let img = imageView.image, img.size.width > 0, img.size.height > 0 else {
+            return view.bounds
+        }
+        let ia = img.size.width / img.size.height
+        let va = view.bounds.width / view.bounds.height
+        let w: CGFloat = ia > va ? view.bounds.width      : view.bounds.height * ia
+        let h: CGFloat = ia > va ? view.bounds.width / ia : view.bounds.height
+        return CGRect(
+            x: (view.bounds.width  - w) / 2,
+            y: (view.bounds.height - h) / 2,
+            width: w, height: h
+        )
+    }
+
+    /// 未缩放时才允许下滑关闭（缩放中的下拉应由 scrollView 处理）
+    var zoomDismissGestureEnabled: Bool {
+        scrollView.zoomScale <= 1.0
     }
 }
 
 // MARK: - UIScrollViewDelegate
 
 extension ImagePreviewViewController: UIScrollViewDelegate {
-
-    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-        return imageView
-    }
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
 }

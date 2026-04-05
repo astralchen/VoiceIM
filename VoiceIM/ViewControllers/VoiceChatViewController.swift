@@ -37,6 +37,7 @@ final class VoiceChatViewController: UIViewController {
     private var inputCoordinator: InputCoordinator!
     private var keyboardManager: KeyboardManager!
 
+
     // MARK: - 初始化
 
     /// 初始化聊天视图控制器
@@ -541,18 +542,14 @@ extension VoiceChatViewController: ImageMessageCellDelegate {
         if resolvedURL.isFileURL {
             // 本地文件：预览时不限制尺寸，加载原始分辨率
             if let image = UIImage(contentsOfFile: resolvedURL.path) {
-                let previewVC = ImagePreviewViewController(image: image, imageURL: resolvedURL)
-                previewVC.modalPresentationStyle = .fullScreen
-                present(previewVC, animated: true)
+                presentImagePreview(image: image, imageURL: resolvedURL, sourceCell: cell)
             } else {
                 ToastView.show("图片加载失败", in: view)
             }
         } else {
             // 远程图片：先查内存缓存，命中直接展示；否则异步加载
             if let cached = ImageCacheManager.shared.cachedImage(for: resolvedURL) {
-                let previewVC = ImagePreviewViewController(image: cached, imageURL: resolvedURL)
-                previewVC.modalPresentationStyle = .fullScreen
-                present(previewVC, animated: true)
+                presentImagePreview(image: cached, imageURL: resolvedURL, sourceCell: cell)
                 return
             }
 
@@ -561,15 +558,19 @@ extension VoiceChatViewController: ImageMessageCellDelegate {
                 let image = await ImageCacheManager.shared.loadImage(from: resolvedURL)
                 await MainActor.run {
                     if let image {
-                        let previewVC = ImagePreviewViewController(image: image, imageURL: resolvedURL)
-                        previewVC.modalPresentationStyle = .fullScreen
-                        present(previewVC, animated: true)
+                        self.presentImagePreview(image: image, imageURL: resolvedURL, sourceCell: cell)
                     } else {
                         ToastView.show("图片加载失败", in: view)
                     }
                 }
             }
         }
+    }
+
+    private func presentImagePreview(image: UIImage, imageURL: URL, sourceCell: ImageMessageCell) {
+        let previewVC = ImagePreviewViewController(image: image, imageURL: imageURL)
+        previewVC.setZoomTransition(from: { [weak sourceCell] in sourceCell?.bubble }, image: image)
+        present(previewVC, animated: true)
     }
 
     func cellDidLoadImage(_ cell: ImageMessageCell, heightDelta: CGFloat) {
@@ -643,7 +644,7 @@ extension VoiceChatViewController: VideoMessageCellDelegate {
         }
 
         let previewVC = VideoPreviewViewController(videoURL: resolvedURL)
-        previewVC.modalPresentationStyle = .fullScreen
+        previewVC.setZoomTransition(from: { [weak cell] in cell?.bubble }, image: cell.currentThumbnailImage)
         present(previewVC, animated: true)
     }
 }

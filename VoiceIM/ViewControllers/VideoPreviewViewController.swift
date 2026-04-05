@@ -1,7 +1,10 @@
 import UIKit
 import AVFoundation
 
-/// 视频预览页面，支持自定义播放控制
+/// 视频预览页面，支持自定义播放控制和苹果相册风格的转场动画
+///
+/// 实现 `ZoomTransitionTarget` 后，`ZoomTransitionController` 会自动为本页面
+/// 安装下滑关闭手势，无需在此添加任何转场相关代码。
 @MainActor
 final class VideoPreviewViewController: UIViewController {
 
@@ -18,7 +21,6 @@ final class VideoPreviewViewController: UIViewController {
     init(videoURL: URL) {
         self.videoURL = videoURL
         super.init(nibName: nil, bundle: nil)
-        modalPresentationStyle = .fullScreen
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -40,93 +42,64 @@ final class VideoPreviewViewController: UIViewController {
         super.viewWillDisappear(animated)
         hideControlsTimer?.invalidate()
         hideControlsTimer = nil
-        Task {
-            await playerManager.pause()
-        }
+        Task { await playerManager.pause() }
     }
 
     deinit {
-        Task { [playerManager] in
-            await playerManager.cleanup()
-        }
+        Task { [playerManager] in await playerManager.cleanup() }
     }
 
     // MARK: - UI 搭建
 
     private func setupUI() {
-        // 创建播放器视图
         playerView = VideoPlayerView()
         playerView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(playerView)
 
-        // 关闭按钮
         closeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
-        closeButton.tintColor = .white
-        closeButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        closeButton.tintColor          = .white
+        closeButton.backgroundColor    = UIColor.black.withAlphaComponent(0.5)
         closeButton.layer.cornerRadius = 20
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         view.addSubview(closeButton)
 
         NSLayoutConstraint.activate([
-            // 播放器视图填充整个屏幕
             playerView.topAnchor.constraint(equalTo: view.topAnchor),
             playerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             playerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             playerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
-            // 关闭按钮
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             closeButton.widthAnchor.constraint(equalToConstant: 40),
             closeButton.heightAnchor.constraint(equalToConstant: 40),
         ])
 
-        // 设置播放器视图回调
-        playerView.onPlayPauseTapped = { [weak self] in
-            self?.handlePlayPauseTapped()
-        }
-
-        playerView.onSeek = { [weak self] targetTime in
-            self?.handleSeek(to: targetTime)
-        }
-
-        playerView.onControlsVisibilityChanged = { [weak self] visible in
-            self?.handleControlsVisibilityChanged(visible)
-        }
-
-        playerView.onPlaybackRateChanged = { [weak self] rate in
-            self?.handlePlaybackRateChanged(rate)
-        }
+        playerView.onPlayPauseTapped           = { [weak self] in self?.handlePlayPauseTapped() }
+        playerView.onSeek                      = { [weak self] time in self?.handleSeek(to: time) }
+        playerView.onControlsVisibilityChanged = { [weak self] v in self?.handleControlsVisibilityChanged(v) }
+        playerView.onPlaybackRateChanged       = { [weak self] rate in self?.handlePlaybackRateChanged(rate) }
     }
 
     // MARK: - 播放器设置
 
     private func setupPlayer() {
         Task {
-            // 先原子性注册所有回调，防止 load 触发状态变化时回调还未就绪
             await playerManager.configureCallbacks(
-                onStateChange: { [weak self] state in
-                    self?.handleStateChange(state)
-                },
-                onProgress: { [weak self] current, duration in
-                    self?.playerView.updateProgress(current: current, duration: duration)
+                onStateChange: { [weak self] state in self?.handleStateChange(state) },
+                onProgress:    { [weak self] cur, dur in
+                    self?.playerView.updateProgress(current: cur, duration: dur)
                 },
                 onFinish: { [weak self] in
                     self?.isPlaying = false
                     self?.playerView.updatePlaybackState(isPlaying: false)
                 }
             )
-
-            // 加载视频
             await playerManager.load(url: videoURL)
-
-            // 获取 AVPlayer 实例并设置到视图
             if let player = await playerManager.getPlayer() {
                 playerView.setPlayer(player)
             }
-
-            // 回调已就绪后再自动播放，状态变化能被正确捕获
             await playerManager.play()
         }
     }
@@ -139,34 +112,23 @@ final class VideoPreviewViewController: UIViewController {
 
     private func handlePlayPauseTapped() {
         Task {
-            if isPlaying {
-                await playerManager.pause()
-            } else {
-                await playerManager.play()
-            }
+            if isPlaying { await playerManager.pause() }
+            else          { await playerManager.play()  }
         }
     }
 
     private func handleSeek(to time: TimeInterval) {
-        Task {
-            await playerManager.seek(to: time)
-        }
+        Task { await playerManager.seek(to: time) }
     }
 
     private func handlePlaybackRateChanged(_ rate: Float) {
-        Task {
-            await playerManager.setPlaybackRate(rate)
-        }
+        Task { await playerManager.setPlaybackRate(rate) }
     }
 
     private func handleStateChange(_ state: VideoPlaybackState) {
         switch state {
-        case .idle:
-            playerView.showLoading(false)
-            showControls()
-        case .loading:
-            playerView.showLoading(true)
-            showControls()
+        case .idle:    playerView.showLoading(false); showControls()
+        case .loading: playerView.showLoading(true);  showControls()
         case .playing:
             isPlaying = true
             playerView.showLoading(false)
@@ -178,17 +140,12 @@ final class VideoPreviewViewController: UIViewController {
             playerView.updatePlaybackState(isPlaying: false)
             showControls()
         case .failed(let error):
-            playerView.showLoading(false)
-            showControls()
-            showError(error)
+            playerView.showLoading(false); showControls(); showError(error)
         }
     }
 
     private func showError(_ error: Error) {
-        let alert = UIAlertController(
-            title: "播放失败",
-            message: error.localizedDescription,
-            preferredStyle: .alert)
+        let alert = UIAlertController(title: "播放失败", message: error.localizedDescription, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "确定", style: .default))
         present(alert, animated: true)
     }
@@ -204,9 +161,7 @@ final class VideoPreviewViewController: UIViewController {
     private func scheduleHideControls() {
         hideControlsTimer?.invalidate()
         hideControlsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.hideControls()
-            }
+            Task { @MainActor [weak self] in self?.hideControls() }
         }
     }
 
@@ -218,23 +173,24 @@ final class VideoPreviewViewController: UIViewController {
     private func handleControlsVisibilityChanged(_ visible: Bool) {
         hideControlsTimer?.invalidate()
         hideControlsTimer = nil
-
-        // 同步关闭按钮的显示状态
-        let alpha: CGFloat = visible ? 1 : 0
-        UIView.animate(withDuration: 0.3) {
-            self.closeButton.alpha = alpha
-        }
-
-        if visible && isPlaying {
-            scheduleHideControls()
-        }
+        UIView.animate(withDuration: 0.3) { self.closeButton.alpha = visible ? 1 : 0 }
+        if visible && isPlaying { scheduleHideControls() }
     }
 
     private func setControlsVisible(_ visible: Bool) {
-        let alpha: CGFloat = visible ? 1 : 0
-        UIView.animate(withDuration: 0.3) {
-            self.closeButton.alpha = alpha
-        }
+        UIView.animate(withDuration: 0.3) { self.closeButton.alpha = visible ? 1 : 0 }
         playerView.setControlsVisible(visible, animated: true)
     }
+}
+
+// MARK: - ZoomTransitionTarget
+
+extension VideoPreviewViewController: ZoomTransitionTarget {
+
+    var zoomContentView: UIView { playerView }
+
+    /// 视频全屏展示，内容区域等于整个 view
+    var zoomDisplayFrame: CGRect { view.bounds }
+
+    // zoomDismissGestureEnabled 使用默认值 true（视频页始终允许下滑关闭）
 }
