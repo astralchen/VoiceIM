@@ -30,12 +30,9 @@ final class ImageMessageCell: ChatBubbleCell {
     // 效果：相同 URL 不会重复加载，提升性能
     private var currentImageURL: URL?
 
-    // 【关键属性】图片缓存（简单的内存缓存）
-    // nonisolated(unsafe)：允许从任何线程访问，NSCache 本身是线程安全的
-    // 原因：图片解码是 CPU 密集操作，缓存可以显著提升滚动性能
-    // 效果：滚动时从缓存加载，高度立即确定，不会跳变
-    // 注意：NSCache 会在内存压力时自动清理，无需手动管理
-    private nonisolated(unsafe) static var imageCache = NSCache<NSURL, UIImage>()
+    // 【已废弃】使用统一的 ImageCacheManager 替代
+    // 原因：ImageCacheManager 提供更完善的缓存策略（内存+磁盘+下采样）
+    // private nonisolated(unsafe) static var imageCache = NSCache<NSURL, UIImage>()
 
     // MARK: - 初始化
 
@@ -57,7 +54,6 @@ final class ImageMessageCell: ChatBubbleCell {
         imageView.image = nil
         loadingIndicator.stopAnimating()
         currentImageURL = nil
-        // 注意：不清理 imageCache，因为它是静态缓存，所有 Cell 共享
     }
 
     // MARK: - UI 搭建
@@ -131,58 +127,50 @@ final class ImageMessageCell: ChatBubbleCell {
     }
 
     private func loadImage(from url: URL) {
-        // 【关键优化】优先使用缓存：避免重复解码图片
-        // 原因：图片解码是 CPU 密集操作，缓存可以显著提升性能
-        // 效果：滚动时从缓存加载，高度立即确定，不会跳变
-        if let cachedImage = Self.imageCache.object(forKey: url as NSURL) {
-            imageView.image = cachedImage
-            let _ = updateImageSize(for: cachedImage)
-            return
-        }
-
         loadingIndicator.startAnimating()
 
-        // 异步加载图片
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let data = try? Data(contentsOf: url),
-                  let image = UIImage(data: data) else {
-                DispatchQueue.main.async {
-                    self?.loadingIndicator.stopAnimating()
+        // 【性能优化】使用统一的 ImageCacheManager
+        // 优势：
+        // 1. 两级缓存（内存 + 磁盘）
+        // 2. 图片下采样（减少内存占用）
+        // 3. 异步解码（避免阻塞主线程）
+        // 4. 自动内存管理
+        Task { [weak self] in
+            guard let self else { return }
+
+            // 计算目标尺寸（用于下采样优化）
+            let targetSize = CGSize(width: 250, height: 350)
+
+            // 异步加载图片
+            let image = await ImageCacheManager.shared.loadImage(from: url, targetSize: targetSize)
+
+            await MainActor.run {
+                // 【关键检查】防止 Cell 复用错乱
+                guard self.currentImageURL == url else { return }
+
+                self.loadingIndicator.stopAnimating()
+
+                guard let image = image else {
+                    VoiceIM.logger.warning("Failed to load image: \(url)")
+                    return
                 }
-                return
-            }
 
-            // 缓存图片
-            Self.imageCache.setObject(image, forKey: url as NSURL)
-
-            DispatchQueue.main.async {
-                // 【关键检查】防止 Cell 复用错乱：确保 URL 没有变化
-                // 原因：异步加载期间，Cell 可能被复用并配置了新的 URL
-                // 效果：避免显示错误的图片（A 消息的 Cell 显示 B 消息的图片）
-                guard self?.currentImageURL == url else { return }
-
-                self?.imageView.image = image
-                self?.loadingIndicator.stopAnimating()
+                self.imageView.image = image
 
                 // 根据图片尺寸更新约束，获取高度变化量
-                let heightDelta = self?.updateImageSize(for: image) ?? 0
+                let heightDelta = self.updateImageSize(for: image)
 
                 // 【关键步骤】通知 CollectionView 重新计算布局
-                // 原因：约束更新后，CollectionView 不会自动刷新布局
-                // 效果：触发 Cell 高度重新计算，图片立即显示正确尺寸
-                var view = self?.superview
+                var view = self.superview
                 while view != nil && !(view is UICollectionView) {
                     view = view?.superview
                 }
                 if let collectionView = view as? UICollectionView {
-                    // 使用 performBatchUpdates 触发布局更新
                     collectionView.performBatchUpdates(nil)
                 }
 
-                // 【关键回调】通知 ViewController 图片已加载，传递高度变化量
-                // 原因：ViewController 需要根据用户位置决定是否调整滚动
-                // 效果：实现智能滚动策略（底部自动滚动，中间保持位置）
-                if let self = self, heightDelta != 0 {
+                // 【关键回调】通知 ViewController 图片已加载
+                if heightDelta != 0 {
                     self.delegate?.cellDidLoadImage(self, heightDelta: heightDelta)
                 }
             }

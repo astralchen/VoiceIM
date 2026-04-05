@@ -12,6 +12,7 @@
 		23B1E6E0CBE79986E9FECD1D /* ChatError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BACD30F535B667AE19DED0 /* ChatError.swift */; };
 		24BF94103557B449A3C24E9A /* Sender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B116B70AF463441C99E8D91 /* Sender.swift */; };
 		28EAD5D969A12EA148C6FF2C /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3013B60CE7DBA4F5D4F00B26 /* Logger.swift */; };
+		390108D14B8B7082A95CB33B /* ImageCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2289A31D4843A128ED73E45D /* ImageCacheManager.swift */; };
 		409B209AD52A4EDCD0A27FE1 /* ChatInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C1A232CA48A0E6F22AA66D /* ChatInputView.swift */; };
 		46522896B13ECD134635D330 /* ChatBubbleCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580F9DF67CE812B7B1D9174E /* ChatBubbleCell.swift */; };
 		46FE214E286FE9D95C161938 /* KeyboardManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B9BFF8C228B2592BC3E1BE /* KeyboardManager.swift */; };
@@ -22,6 +23,7 @@
 		59BB19A94B08CB85491B1763 /* ImageMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7550DBAF19AB636AAE64D95 /* ImageMessageCell.swift */; };
 		5AC262B68FC83A3946031BC8 /* ImagePreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8752F520CC3796FAD778D37 /* ImagePreviewViewController.swift */; };
 		5E541295513E031D034FBEFA /* MessageCellConfigurable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B908CF76DFF91D292CF9D28 /* MessageCellConfigurable.swift */; };
+		61F88AB9A644BB9D957AD8D0 /* MessagePreloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 517224B7F44D4F1D6A25E4BD /* MessagePreloader.swift */; };
 		67F1E86AD876F33B4E309707 /* PhotoPickerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D977382F54C6E581B9DA915C /* PhotoPickerManager.swift */; };
 		6A6495CF5DA4CE57A952589D /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 99648386B953F022B1C8BB44 /* Launch Screen.storyboard */; };
 		6DB6FE9AE673B5E761C7C573 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C33B6D976E32FDCBC0C4AB /* SceneDelegate.swift */; };
@@ -70,12 +72,14 @@
 		0B116B70AF463441C99E8D91 /* Sender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sender.swift; sourceTree = "<group>"; };
 		102220184BADC48F3B5937D4 /* LoggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoggerTests.swift; sourceTree = "<group>"; };
 		202375FF5D1E7C999D14F0CD /* AppDependencies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDependencies.swift; sourceTree = "<group>"; };
+		2289A31D4843A128ED73E45D /* ImageCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheManager.swift; sourceTree = "<group>"; };
 		2B09AF217DB14CB120A07C7F /* VideoMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoMessageCell.swift; sourceTree = "<group>"; };
 		3013B60CE7DBA4F5D4F00B26 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		41488FDE0AC88B7E19F6DDA5 /* VoiceMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageCell.swift; sourceTree = "<group>"; };
 		42BACD30F535B667AE19DED0 /* ChatError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatError.swift; sourceTree = "<group>"; };
 		47AE264216B29ED9FE09505A /* MessageRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageRepository.swift; sourceTree = "<group>"; };
 		4E6A8DBEFCFEF07BA1010BEE /* MessageDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDataSource.swift; sourceTree = "<group>"; };
+		517224B7F44D4F1D6A25E4BD /* MessagePreloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagePreloader.swift; sourceTree = "<group>"; };
 		5615CDCD271D478590753D54 /* RecordingOverlayViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverlayViewController.swift; sourceTree = "<group>"; };
 		580F9DF67CE812B7B1D9174E /* ChatBubbleCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBubbleCell.swift; sourceTree = "<group>"; };
 		5E9F1D1FA843B3B61439245A /* MessageActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageActionHandler.swift; sourceTree = "<group>"; };
@@ -246,10 +250,12 @@
 		AF20DE62EC9FE085C883BBF6 /* Managers */ = {
 			isa = PBXGroup;
 			children = (
+				2289A31D4843A128ED73E45D /* ImageCacheManager.swift */,
 				E77254052D3179F2EA22FD34 /* InputCoordinator.swift */,
 				D3B9BFF8C228B2592BC3E1BE /* KeyboardManager.swift */,
 				5E9F1D1FA843B3B61439245A /* MessageActionHandler.swift */,
 				4E6A8DBEFCFEF07BA1010BEE /* MessageDataSource.swift */,
+				517224B7F44D4F1D6A25E4BD /* MessagePreloader.swift */,
 				D977382F54C6E581B9DA915C /* PhotoPickerManager.swift */,
 				B5457CA68E390A12522AF988 /* VideoPlayerManager.swift */,
 				84D17C9EF84D9F9D362B6F77 /* VoiceCacheManager.swift */,
@@ -439,6 +445,7 @@
 				A2A5E8C6C18E8F648B8A40E5 /* ChatViewModel.swift in Sources */,
 				B5E068FF973DB7DAD5AE48F7 /* ErrorHandler.swift in Sources */,
 				D7566144AABE38618797F5C8 /* FileStorageManager.swift in Sources */,
+				390108D14B8B7082A95CB33B /* ImageCacheManager.swift in Sources */,
 				59BB19A94B08CB85491B1763 /* ImageMessageCell.swift in Sources */,
 				5AC262B68FC83A3946031BC8 /* ImagePreviewViewController.swift in Sources */,
 				EC93F97E11BD6EF9B488AEF5 /* InputCoordinator.swift in Sources */,
@@ -450,6 +457,7 @@
 				B934B547F65D2BD6ECFEE977 /* MessageCellInteractive.swift in Sources */,
 				5170551C46864FF4A170D1B3 /* MessageCellViewModel.swift in Sources */,
 				CA6D560A6F81280000D7AEAD /* MessageDataSource.swift in Sources */,
+				61F88AB9A644BB9D957AD8D0 /* MessagePreloader.swift in Sources */,
 				4988B502A025D14A4742A1EE /* MessageRepository.swift in Sources */,
 				9F03ECE5F8B1FDD273097BE6 /* MessageStorage.swift in Sources */,
 				67F1E86AD876F33B4E309707 /* PhotoPickerManager.swift in Sources */,

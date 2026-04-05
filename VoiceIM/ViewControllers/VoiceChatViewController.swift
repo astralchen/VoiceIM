@@ -21,6 +21,10 @@ final class VoiceChatViewController: UIViewController {
     private let maxHistoryPages = 3         // mock 数据最多 3 页
     private let historyRefreshControl = UIRefreshControl()
 
+    // MARK: - 消息预加载
+
+    private let messagePreloader = MessagePreloader.shared
+
     // MARK: - MVVM
 
     private let viewModel: ChatViewModel
@@ -650,5 +654,21 @@ extension VoiceChatViewController: LocationMessageCellDelegate {
         let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
         let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
         mapItem.openInMaps(launchOptions: nil)
+    }
+}
+
+// MARK: - UIScrollViewDelegate (消息预加载)
+
+extension VoiceChatViewController {
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // 获取可见的 IndexPath
+        let visibleIndexPaths = collectionView.indexPathsForVisibleItems
+
+        // 触发消息预加载
+        messagePreloader.updateVisibleRange(
+            messages: messageDataSource.messages,
+            visibleIndexPaths: visibleIndexPaths
+        )
     }
 }
