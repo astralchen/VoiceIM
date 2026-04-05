@@ -83,15 +83,22 @@ final class VideoMessageCell: ChatBubbleCell {
         loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
         bubble.addSubview(loadingIndicator)
 
+        // 【关键修复】降低宽高约束优先级，避免与 Cell 自动高度冲突
+        let widthConstraint = thumbnailView.widthAnchor.constraint(equalToConstant: 200)
+        widthConstraint.priority = .defaultHigh  // 750，低于 required (1000)
+
+        let heightConstraint = thumbnailView.heightAnchor.constraint(equalToConstant: 200)
+        heightConstraint.priority = .defaultHigh  // 750，低于 required (1000)
+
         NSLayoutConstraint.activate([
             // 缩略图填充整个气泡
             thumbnailView.topAnchor.constraint(equalTo: bubble.topAnchor),
             thumbnailView.leadingAnchor.constraint(equalTo: bubble.leadingAnchor),
             thumbnailView.trailingAnchor.constraint(equalTo: bubble.trailingAnchor),
             thumbnailView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor),
-            // 固定宽高比
-            thumbnailView.widthAnchor.constraint(equalToConstant: 200),
-            thumbnailView.heightAnchor.constraint(equalToConstant: 200),
+            // 固定宽高比（降低优先级）
+            widthConstraint,
+            heightConstraint,
 
             // 播放按钮居中
             playButton.centerXAnchor.constraint(equalTo: bubble.centerXAnchor),
