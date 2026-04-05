@@ -30,6 +30,15 @@ final class MessageDataSource: MessageDataSourceProtocol {
     private let collectionView: UICollectionView
     private var dataSource: UICollectionViewDiffableDataSource<Section, ChatMessage>!
 
+    /// 刷新指定消息的 Cell（用于播放状态变化）
+    func reloadMessage(id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        let message = messages[idx]
+        var snapshot = dataSource.snapshot()
+        snapshot.reloadItems([message])
+        dataSource.apply(snapshot, animatingDifferences: false)
+    }
+
     /// 消息数组（可变状态的真实来源）
     ///
     /// 存储所有消息的最新状态，包括：

@@ -1,8 +1,11 @@
 import UIKit
 import AVFoundation
 import MapKit
+import Combine
 
 /// IM 聊天页面（支持语音消息、文本消息、图片消息和视频消息）
+///
+/// 使用 MVVM 架构，通过 ChatViewModel 管理状态
 final class VoiceChatViewController: UIViewController {
 
     // MARK: - UI
@@ -18,10 +21,14 @@ final class VoiceChatViewController: UIViewController {
     private let maxHistoryPages = 3         // mock 数据最多 3 页
     private let historyRefreshControl = UIRefreshControl()
 
+    // MARK: - MVVM
+
+    private let viewModel: ChatViewModel
+    private var cancellables = Set<AnyCancellable>()
+
     // MARK: - 依赖注入
 
-    private var player: AudioPlaybackService
-    private var messageDataSource: MessageDataSourceProtocol!
+    private var messageDataSource: MessageDataSource!
     private var actionHandler: MessageActionHandler!
     private var inputCoordinator: InputCoordinator!
     private var keyboardManager: KeyboardManager!
@@ -30,13 +37,11 @@ final class VoiceChatViewController: UIViewController {
 
     /// 初始化聊天视图控制器
     ///
-    /// 使用依赖注入模式，支持替换所有服务实现。
-    /// 默认参数使用单例，保持向后兼容。
+    /// 使用 MVVM 架构，通过 ChatViewModel 管理状态。
     ///
-    /// - Parameters:
-    ///   - player: 播放服务
-    init(player: AudioPlaybackService = VoicePlaybackManager.shared) {
-        self.player = player
+    /// - Parameter viewModel: 聊天 ViewModel
+    init(viewModel: ChatViewModel) {
+        self.viewModel = viewModel
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -54,14 +59,19 @@ final class VoiceChatViewController: UIViewController {
         // 初始化依赖组件
         setupCollectionView()
         messageDataSource = MessageDataSource(collectionView: collectionView)
-        actionHandler = MessageActionHandler(player: player)
+        actionHandler = MessageActionHandler(player: viewModel.playbackService)
         inputCoordinator = InputCoordinator()
 
         setupInputView()
         setupManagers()
         setupPlaybackCallbacks()
         setupAppLifecycleObservers()
-        insertMockMessages()
+
+        // 订阅 ViewModel 状态
+        bindViewModel()
+
+        // 加载消息
+        viewModel.loadMessages()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -72,7 +82,7 @@ final class VoiceChatViewController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        player.stopCurrent()
+        viewModel.stopPlayback()
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -87,6 +97,87 @@ final class VoiceChatViewController: UIViewController {
         coordinator.animate(alongsideTransition: nil) { [weak self] _ in
             self?.scrollToBottom(animated: false)
         }
+    }
+
+    // MARK: - ViewModel Binding
+
+    /// 订阅 ViewModel 的状态变化
+    private func bindViewModel() {
+        // 订阅消息列表变化
+        viewModel.$messages
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] messages in
+                self?.updateMessages(messages)
+            }
+            .store(in: &cancellables)
+
+        // 订阅错误
+        viewModel.$error
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] error in
+                self?.handleError(error)
+            }
+            .store(in: &cancellables)
+    }
+
+    /// 更新消息列表
+    private func updateMessages(_ messages: [ChatMessage]) {
+        // 使用增量更新策略，避免清空重建导致的动画问题
+
+        let currentIDs = Set(messageDataSource.messages.map { $0.id })
+        let newIDs = Set(messages.map { $0.id })
+
+        // 如果是首次加载，直接批量添加
+        if currentIDs.isEmpty {
+            for message in messages {
+                messageDataSource.appendMessage(message, animatingDifferences: false)
+            }
+            if !messages.isEmpty {
+                scrollToBottom(animated: false)
+            }
+            return
+        }
+
+        // 增量更新：找出新增、删除、更新的消息
+        let toDelete = currentIDs.subtracting(newIDs)
+        let toAdd = messages.filter { !currentIDs.contains($0.id) }
+
+        // 先删除不存在的消息（批量删除，关闭动画）
+        for id in toDelete {
+            _ = messageDataSource.deleteMessage(id: id)
+        }
+
+        // 添加新消息（开启动画）
+        for message in toAdd {
+            messageDataSource.appendMessage(message, animatingDifferences: true)
+        }
+
+        // 更新已存在消息的状态（isPlayed, sendStatus）
+        for message in messages where currentIDs.contains(message.id) {
+            if let index = messageDataSource.messages.firstIndex(where: { $0.id == message.id }) {
+                let current = messageDataSource.messages[index]
+
+                // 检查状态是否变化
+                if current.isPlayed != message.isPlayed {
+                    messageDataSource.markAsPlayed(id: message.id)
+                }
+
+                if current.sendStatus != message.sendStatus {
+                    messageDataSource.updateSendStatus(id: message.id, status: message.sendStatus)
+                }
+            }
+        }
+
+        // 如果有新消息添加，滚动到底部
+        if !toAdd.isEmpty {
+            scrollToBottom(animated: true)
+        }
+    }
+
+    /// 处理错误
+    private func handleError(_ error: ChatError) {
+        ErrorHandler.shared.handle(error, in: self)
     }
 
     // MARK: - UI 搭建
@@ -168,8 +259,14 @@ final class VoiceChatViewController: UIViewController {
     private func setupManagers() {
         // 配置 MessageDataSource 的依赖注入
         messageDataSource.dependencies = MessageCellDependencies(
-            isPlaying: player.isPlaying(id:),
-            currentProgress: player.currentProgress(for:),
+            isPlaying: { [weak self] id in
+                guard let self else { return false }
+                return self.viewModel.playbackService.isPlaying(id: id)
+            },
+            currentProgress: { [weak self] id in
+                guard let self else { return 0 }
+                return self.viewModel.playbackService.currentProgress(for: id)
+            },
             voiceDelegate: self,
             imageDelegate: self,
             videoDelegate: self,
@@ -185,7 +282,7 @@ final class VoiceChatViewController: UIViewController {
             // 通过协议统一设置交互回调
             if let interactiveCell = cell as? MessageCellInteractive {
                 interactiveCell.setRetryHandler { [weak self] in
-                    self?.actionHandler.retryMessage(message.id)
+                    self?.viewModel.retryMessage(id: message.id)
                 }
                 interactiveCell.setContextMenuProvider { [weak self] msg in
                     self?.actionHandler.buildContextMenu(for: msg)
@@ -202,17 +299,13 @@ final class VoiceChatViewController: UIViewController {
         // 配置 ActionHandler
         actionHandler.viewController = self
         actionHandler.onDelete = { [weak self] id in
-            guard let self else { return }
-            if let message = self.messageDataSource.deleteMessage(id: id),
-               let url = message.localURL {
-                try? FileManager.default.removeItem(at: url)
-            }
+            self?.viewModel.deleteMessage(id: id)
         }
         actionHandler.onRecall = { [weak self] id in
-            self?.recallMessage(id: id)
+            self?.viewModel.recallMessage(id: id)
         }
         actionHandler.onRetry = { [weak self] id in
-            self?.retryMessage(id: id)
+            self?.viewModel.retryMessage(id: id)
         }
         actionHandler.onRecalledMessageTap = { [weak self] message in
             guard case .recalled(let originalText) = message.kind,
@@ -224,19 +317,19 @@ final class VoiceChatViewController: UIViewController {
         inputCoordinator.viewController = self
         inputCoordinator.setup(with: chatInputView)
         inputCoordinator.onSendText = { [weak self] text in
-            self?.appendMessage(.text(text))
+            self?.viewModel.sendTextMessage(text)
         }
         inputCoordinator.onSendVoice = { [weak self] url, duration in
-            self?.appendMessage(.voice(localURL: url, duration: duration))
+            self?.viewModel.sendVoiceMessage(url: url, duration: duration)
         }
         inputCoordinator.onSendImage = { [weak self] url in
-            self?.appendMessage(.image(localURL: url))
+            self?.viewModel.sendImageMessage(url: url)
         }
         inputCoordinator.onSendVideo = { [weak self] url, duration in
-            self?.appendMessage(.video(localURL: url, duration: duration))
+            self?.viewModel.sendVideoMessage(url: url, duration: duration)
         }
         inputCoordinator.onSendLocation = { [weak self] latitude, longitude, address in
-            self?.appendMessage(.location(latitude: latitude, longitude: longitude, address: address))
+            self?.viewModel.sendLocationMessage(latitude: latitude, longitude: longitude, address: address)
         }
         inputCoordinator.showToast = { [weak self] message in
             guard let self else { return }
@@ -254,238 +347,246 @@ final class VoiceChatViewController: UIViewController {
         keyboardManager.startObserving()
     }
 
+    // MARK: - 播放回调
+
     private func setupPlaybackCallbacks() {
-        player.onStart = { [weak self] id in
-            self?.messageDataSource.markAsPlayed(id: id)
+        // 获取实际的播放器实例（VoicePlaybackManager）
+        guard let playbackManager = viewModel.playbackService as? VoicePlaybackManager else {
+            VoiceIM.logger.warning("playbackService is not VoicePlaybackManager")
+            return
         }
-        player.onProgress = { [weak self] id, progress in
-            self?.cellForMessage(id: id)?.applyPlayState(isPlaying: true, progress: progress)
+
+        // 设置播放器回调
+        playbackManager.onStart = { [weak self] (id: UUID) in
+            VoiceIM.logger.debug("Playback started for message: \(id)")
+            guard let self = self else { return }
+
+            // 刷新正在播放的 Cell，让播放按钮变成暂停图标
+            self.messageDataSource.reloadMessage(id: id)
         }
-        player.onStop = { [weak self] id in
-            self?.cellForMessage(id: id)?.applyPlayState(isPlaying: false, progress: 0)
+
+        playbackManager.onProgress = { [weak self] (id: UUID, progress: Float) in
+            guard let self = self else { return }
+            // 刷新正在播放的 Cell，更新进度条和剩余时长
+            self.messageDataSource.reloadMessage(id: id)
+        }
+
+        playbackManager.onStop = { [weak self] (id: UUID) in
+            VoiceIM.logger.debug("Playback stopped for message: \(id)")
+            guard let self = self else { return }
+
+            // 刷新 Cell，让播放按钮恢复
+            self.messageDataSource.reloadMessage(id: id)
         }
     }
+
+    // MARK: - 应用生命周期
 
     private func setupAppLifecycleObservers() {
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(appDidEnterBackground),
+            selector: #selector(handleAppDidEnterBackground),
             name: UIApplication.didEnterBackgroundNotification,
             object: nil)
     }
 
-    @objc private func appDidEnterBackground() {
-        player.stopCurrent()
+    @objc private func handleAppDidEnterBackground() {
+        viewModel.stopPlayback()
     }
 
-    // MARK: - 消息列表
+    // MARK: - 历史消息加载
 
-    private func appendMessage(_ message: ChatMessage) {
-        let shouldScroll = isNearBottom
-        messageDataSource.appendMessage(message, animatingDifferences: false)
-
-        if shouldScroll {
-            scrollToBottom(animated: true)
-        }
-
-        // 模拟发送
-        if message.isOutgoing {
-            simulateSendMessage(id: message.id)
-        }
-    }
-
-    /// 模拟消息发送过程（开发阶段使用）
-    private func simulateSendMessage(id: UUID) {
-        let delay = Double.random(in: 1.0...2.0)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self else { return }
-            let success = Double.random(in: 0...1) < 0.7
-            self.messageDataSource.updateSendStatus(id: id, status: success ? .delivered : .failed)
-        }
-    }
-
-    /// 重试发送失败的消息
-    private func retryMessage(id: UUID) {
-        guard let idx = messageDataSource.index(of: id),
-              let failedMessage = messageDataSource.message(at: idx),
-              failedMessage.sendStatus == .failed else { return }
-
-        // 先删除失败的消息
-        if let message = messageDataSource.deleteMessage(id: id) {
-            // 根据消息类型重新创建并发送
-            let newMessage: ChatMessage
-            switch message.kind {
-            case .voice(let localURL, _, let duration):
-                if let url = localURL {
-                    newMessage = .voice(localURL: url, duration: duration, sentAt: Date())
-                } else {
-                    ToastView.show("无法重试：原始文件已丢失", in: view)
-                    return
-                }
-            case .text(let content):
-                newMessage = .text(content, sender: .me, sentAt: Date())
-            case .image(let localURL, _):
-                if let url = localURL {
-                    newMessage = .image(localURL: url, sentAt: Date())
-                } else {
-                    ToastView.show("无法重试：原始文件已丢失", in: view)
-                    return
-                }
-            case .video(let localURL, _, let duration):
-                if let url = localURL {
-                    newMessage = .video(localURL: url, duration: duration, sentAt: Date())
-                } else {
-                    ToastView.show("无法重试：原始文件已丢失", in: view)
-                    return
-                }
-            case .recalled:
-                ToastView.show("撤回消息无法重试", in: view)
-                return
-            case .location:
-                ToastView.show("位置消息无法重试", in: view)
-                return
-            }
-
-            appendMessage(newMessage)
-        }
-    }
-
-    /// UIRefreshControl 触发回调（用户在列表顶部下拉时调用）
     @objc private func handleHistoryRefresh() {
-        guard !isLoadingHistory else {
+        guard !isLoadingHistory, historyPage < maxHistoryPages else {
             historyRefreshControl.endRefreshing()
             return
         }
-        guard historyPage < maxHistoryPages else {
-            historyRefreshControl.endRefreshing()
-            ToastView.show("没有更多历史消息", in: view)
-            return
-        }
+
         isLoadingHistory = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+        historyPage += 1
+
+        // 模拟网络延迟
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             guard let self else { return }
-            self.messageDataSource.prependMessages(self.makeMockHistoryBatch())
-            self.isLoadingHistory = false
+            // TODO: 从 ViewModel 加载历史消息
             self.historyRefreshControl.endRefreshing()
+            self.isLoadingHistory = false
         }
     }
 
-    /// 撤回消息：将原消息替换为撤回提示消息
-    private func recallMessage(id: UUID) {
-        guard let idx = messageDataSource.index(of: id),
-              let originalMessage = messageDataSource.message(at: idx),
-              originalMessage.isOutgoing else { return }
+    // MARK: - 滚动控制
 
-        // 提取原文本内容（仅文本消息保留）
-        let originalText: String?
-        if case .text(let content) = originalMessage.kind {
-            originalText = content
-        } else {
-            originalText = nil
-        }
-
-        // 删除原消息的本地文件
-        if let url = originalMessage.localURL {
-            try? FileManager.default.removeItem(at: url)
-        }
-
-        // 创建撤回消息
-        let recalledMessage = ChatMessage.recalled(
-            originalText: originalText,
-            sender: originalMessage.sender,
-            sentAt: originalMessage.sentAt)
-
-        messageDataSource.replaceMessage(id: id, with: recalledMessage)
-    }
-
-    /// 判断当前是否在底部附近
     private var isNearBottom: Bool {
-        let cv = collectionView!
-        let distanceFromBottom = cv.contentSize.height
-            - cv.contentOffset.y
-            - cv.bounds.height
-            + cv.adjustedContentInset.bottom
-        return distanceFromBottom < 60
+        let contentHeight = collectionView.contentSize.height
+        let scrollViewHeight = collectionView.bounds.height
+        let offsetY = collectionView.contentOffset.y
+        let bottomInset = collectionView.contentInset.bottom
+
+        return offsetY + scrollViewHeight + bottomInset >= contentHeight - 100
     }
 
-    /// 滚动到底部
     private func scrollToBottom(animated: Bool) {
         guard !messageDataSource.messages.isEmpty else { return }
-        collectionView.scrollToItem(
-            at: IndexPath(item: messageDataSource.messages.count - 1, section: 0),
-            at: .bottom, animated: animated)
+        let lastIndex = messageDataSource.messages.count - 1
+        let indexPath = IndexPath(item: lastIndex, section: 0)
+        collectionView.scrollToItem(at: indexPath, at: .bottom, animated: animated)
     }
 
-    // MARK: - 播放逻辑
+    // MARK: - 链接处理
 
-    private func handlePlayTap(message: ChatMessage) {
-        if player.isPlaying(id: message.id) {
-            player.stopCurrent()
-            return
-        }
-        Task { @MainActor in
-            do {
-                let url = try await self.resolveURL(for: message)
-                try self.player.play(id: message.id, url: url)
-            } catch {
-                ToastView.show("播放失败", in: self.view)
-            }
+    private func handleLinkTapped(url: URL, type: NSTextCheckingResult.CheckingType) {
+        if type == .link {
+            UIApplication.shared.open(url)
+        } else if type == .phoneNumber {
+            UIApplication.shared.open(url)
+        } else {
+            // 银行卡号等其他类型
+            let alert = UIAlertController(
+                title: "链接",
+                message: url.absoluteString,
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "复制", style: .default) { _ in
+                UIPasteboard.general.string = url.absoluteString
+            })
+            alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+            present(alert, animated: true)
         }
     }
 
-    private func resolveURL(for message: ChatMessage) async throws -> URL {
-        if let local = message.localURL   { return local }
-        if let remote = message.remoteURL {
-            // VoiceCacheManager 是 actor，可以安全地跨并发域调用
-            return try await VoiceCacheManager.shared.resolve(remote)
-        }
-        throw URLError(.fileDoesNotExist)
-    }
-
-    // MARK: - Cell 查找
-
-    private func cellForMessage(id: UUID) -> VoiceMessageCell? {
-        guard let idx = messageDataSource.index(of: id) else { return nil }
-        return collectionView.cellForItem(at: IndexPath(item: idx, section: 0)) as? VoiceMessageCell
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 }
 
 // MARK: - VoiceMessageCellDelegate
 
 extension VoiceChatViewController: VoiceMessageCellDelegate {
-
     func cellDidTapPlay(_ cell: VoiceMessageCell, message: ChatMessage) {
-        handlePlayTap(message: message)
+        // 直接使用 cell 传递的 message，避免从 ViewModel 查找导致的不同步问题
+        VoiceIM.logger.debug("cellDidTapPlay called for message: \(message.id)")
+
+        guard case .voice(let localURL, _, _) = message.kind else {
+            VoiceIM.logger.error("Not a voice message")
+            ToastView.show("不是语音消息", in: view)
+            return
+        }
+
+        guard let url = localURL else {
+            VoiceIM.logger.error("Voice message localURL is nil")
+            ToastView.show("语音文件不存在", in: view)
+            return
+        }
+
+        let fileExists = FileManager.default.fileExists(atPath: url.path)
+        VoiceIM.logger.debug("Voice URL: \(url), file exists: \(fileExists)")
+
+        do {
+            try viewModel.playbackService.play(id: message.id, url: url)
+            VoiceIM.logger.info("Voice playback started successfully")
+
+            // 标记为已播放
+            if !message.isPlayed && !message.isOutgoing {
+                viewModel.markAsPlayed(id: message.id)
+            }
+        } catch {
+            VoiceIM.logger.error("Voice playback failed: \(error)")
+            ToastView.show("播放失败: \(error.localizedDescription)", in: view)
+        }
     }
 
     func cellDidSeek(_ cell: VoiceMessageCell, message: ChatMessage, progress: Float) {
-        guard player.isPlaying(id: message.id) else { return }
-        player.seek(to: progress)
+        viewModel.playbackService.seek(to: progress)
     }
 }
 
 // MARK: - ImageMessageCellDelegate
 
 extension VoiceChatViewController: ImageMessageCellDelegate {
-
     func cellDidTapImage(_ cell: ImageMessageCell, message: ChatMessage) {
-        guard case .image(let localURL, let remoteURL) = message.kind,
-              let imageURL = localURL ?? remoteURL else { return }
+        guard case .image(let localURL, let remoteURL) = message.kind else {
+            ToastView.show("消息类型错误", in: view)
+            return
+        }
 
-        let previewVC = ImagePreviewViewController(imageURL: imageURL)
-        present(previewVC, animated: true)
+        guard let url = localURL ?? remoteURL else {
+            ToastView.show("图片文件不存在", in: view)
+            return
+        }
+
+        // TODO: 实现全屏图片查看器
+        VoiceIM.logger.info("Image tapped: \(url)")
+    }
+
+    func cellDidLoadImage(_ cell: ImageMessageCell, heightDelta: CGFloat) {
+        // 【智能滚动策略】根据用户当前位置决定是否调整滚动
+        // 目标：在图片加载导致高度变化时，提供最佳用户体验
+
+        // 【策略 1】用户在底部：自动滚动到最新消息
+        // 原因：用户正在查看最新消息，期望看到完整的图片
+        // 效果：图片加载完成后，自动滚动显示完整内容
+        // 场景：发送图片消息后，或者收到新的图片消息
+        if isNearBottom {
+            VoiceIM.logger.debug("Image loaded at bottom, scrolling to bottom")
+            scrollToBottom(animated: true)
+            return
+        }
+
+        // 【策略 2 & 3】检查图片 Cell 是否在可见区域
+        // 原因：只有可见区域的图片高度变化才会影响用户体验
+        guard let indexPath = collectionView.indexPath(for: cell) else { return }
+        let visibleIndexPaths = collectionView.indexPathsForVisibleItems
+
+        if visibleIndexPaths.contains(indexPath) {
+            // 【策略 2】图片在可见区域：保持当前阅读位置不变
+            // 原因：用户正在阅读历史消息，突然跳动会打断阅读体验
+            // 效果：通过调整 contentOffset 补偿高度变化，用户看到的内容位置不变
+            // 场景：向上滚动查看历史消息时，图片加载完成
+
+            // 计算 Cell 在 CollectionView 中的位置
+            let cellFrame = collectionView.layoutAttributesForItem(at: indexPath)?.frame ?? .zero
+            let cellTop = cellFrame.minY
+            let currentOffset = collectionView.contentOffset.y
+
+            // 【关键判断】只有图片在当前可见区域上方时才需要补偿
+            // 原因：如果图片在下方（还未滚动到），高度变化不影响当前可见内容
+            // 效果：避免不必要的滚动调整
+            if cellTop < currentOffset + collectionView.bounds.height {
+                VoiceIM.logger.debug("Image loaded in visible area, adjusting offset by \(heightDelta)")
+
+                // 【关键操作】平滑调整滚动位置，保持用户当前阅读内容不动
+                // 原理：图片高度增加 heightDelta，contentOffset 也增加 heightDelta
+                //      这样可见区域的内容位置保持不变
+                // 动画：0.2 秒平滑过渡，避免突兀的跳动
+                UIView.animate(withDuration: 0.2) {
+                    self.collectionView.contentOffset.y += heightDelta
+                }
+            }
+        } else {
+            // 【策略 3】图片不在可见区域：直接更新，不影响用户
+            // 原因：图片在屏幕外，高度变化不会影响用户当前看到的内容
+            // 效果：静默更新，用户无感知
+            // 场景：图片在很远的历史消息中，或者在下方未滚动到的位置
+            VoiceIM.logger.debug("Image loaded outside visible area, no adjustment needed")
+        }
     }
 }
 
 // MARK: - VideoMessageCellDelegate
 
 extension VoiceChatViewController: VideoMessageCellDelegate {
-
     func cellDidTapVideo(_ cell: VideoMessageCell, message: ChatMessage) {
-        guard case .video(let localURL, let remoteURL, _) = message.kind,
-              let videoURL = localURL ?? remoteURL else { return }
+        guard case .video(let localURL, let remoteURL, _) = message.kind else {
+            ToastView.show("消息类型错误", in: view)
+            return
+        }
 
-        let previewVC = VideoPreviewViewController(videoURL: videoURL)
+        guard let url = localURL ?? remoteURL else {
+            ToastView.show("视频文件不存在", in: view)
+            return
+        }
+
+        let previewVC = VideoPreviewViewController(videoURL: url)
+        previewVC.modalPresentationStyle = .fullScreen
         present(previewVC, animated: true)
     }
 }
@@ -493,136 +594,10 @@ extension VoiceChatViewController: VideoMessageCellDelegate {
 // MARK: - LocationMessageCellDelegate
 
 extension VoiceChatViewController: LocationMessageCellDelegate {
-
     func cellDidTapLocation(_ cell: LocationMessageCell, message: ChatMessage) {
         guard case .location(let latitude, let longitude, _) = message.kind else { return }
-
-        // 打开系统地图应用
         let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
         let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
-        mapItem.name = "位置"
-        mapItem.openInMaps(launchOptions: [MKLaunchOptionsMapCenterKey: NSValue(mkCoordinate: coordinate)])
-    }
-}
-
-// MARK: - 链接点击处理
-
-extension VoiceChatViewController {
-
-    /// 处理文本消息中的链接点击
-    private func handleLinkTapped(url: URL, type: NSTextCheckingResult.CheckingType) {
-        if type.contains(.phoneNumber) {
-            // 电话号码
-            if UIApplication.shared.canOpenURL(url) {
-                UIApplication.shared.open(url)
-            }
-        } else if type.contains(.link) {
-            // URL 链接
-            if UIApplication.shared.canOpenURL(url) {
-                UIApplication.shared.open(url)
-            }
-        } else if type.contains(.address) {
-            // 银行卡号（使用 .address 类型标记）
-            if url.scheme == "bankcard", let cardNumber = url.host {
-                handleBankCardTapped(cardNumber: cardNumber)
-            }
-        }
-    }
-
-    /// 处理银行卡号点击
-    private func handleBankCardTapped(cardNumber: String) {
-        let alert = UIAlertController(
-            title: "银行卡号",
-            message: formatBankCard(cardNumber),
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "复制", style: .default) { _ in
-            UIPasteboard.general.string = cardNumber
-        })
-        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-        present(alert, animated: true)
-    }
-
-    /// 格式化银行卡号（每4位加空格）
-    private func formatBankCard(_ cardNumber: String) -> String {
-        var formatted = ""
-        for (index, char) in cardNumber.enumerated() {
-            if index > 0 && index % 4 == 0 {
-                formatted += " "
-            }
-            formatted.append(char)
-        }
-        return formatted
-    }
-}
-
-// MARK: - Mock 数据
-
-extension VoiceChatViewController {
-
-    /// 生成一批 mock 历史消息
-    private func makeMockHistoryBatch() -> [ChatMessage] {
-        historyPage += 1
-        let now = Date()
-        let batches: [[(String, Sender, TimeInterval)]] = [
-            [
-                ("早上好！",        .peer, 3 * 3600),
-                ("bug 修好了吗？",   .me,   3 * 3600 - 120),
-                ("修好了，并发问题", .peer, 3 * 3600 - 240),
-                ("actor 确实好用",  .me,   3 * 3600 - 360),
-                ("下次注意",        .peer, 3 * 3600 - 480),
-            ],
-            [
-                ("周末有空吗？",   .me,   6 * 3600),
-                ("周六可以",       .peer, 6 * 3600 - 120),
-                ("讨论新需求",     .me,   6 * 3600 - 240),
-                ("没问题",         .peer, 6 * 3600 - 360),
-            ],
-            [
-                ("好久不见！",       .peer, 25 * 3600),
-                ("新功能快上线了吗？", .me,  25 * 3600 - 120),
-                ("还差一点",         .peer, 25 * 3600 - 240),
-                ("加油，期待！",      .me,  25 * 3600 - 360),
-            ],
-        ]
-        return batches[(historyPage - 1) % batches.count].map { text, sender, ago in
-            .text(text, sender: sender, sentAt: now - ago)
-        }
-    }
-
-    /// 预填 20 条消息
-    private func insertMockMessages() {
-        let now = Date()
-        let entries: [(String, Sender, TimeInterval)] = [
-            ("你好！",             .peer, 3600),
-            ("最近怎么样？",        .me,   3555),
-            ("在学 Swift 并发模型", .peer, 3510),
-            ("actor 挺好用的",     .me,   3465),
-            ("隔离状态很清晰",      .peer, 3420),
-            ("你用 SwiftUI 还是 UIKit？", .me,   1800),
-            ("目前还是 UIKit",            .peer, 1755),
-            ("等 iOS 15 普及再迁移",      .me,   1710),
-            ("有道理",                    .peer, 1665),
-            ("今天天气不错",              .me,   1620),
-            ("出去走走？",   .peer, 600),
-            ("下午有个会",   .me,   555),
-            ("那改天吧",     .peer, 510),
-            ("好的",         .me,   465),
-            ("记得测语音",   .peer, 420),
-            ("哈哈好的",   .me,    60),
-            ("长按录音按钮", .peer,  45),
-            ("松手发送",   .me,    30),
-            ("上滑取消",   .peer,  15),
-            ("收到！",     .me,     0),
-            ("这是我的电话：13800138000", .peer, -10),
-            ("访问这个网站 https://www.apple.com 看看", .me, -20),
-            ("我的银行卡号是 6222 0012 3456 7890", .peer, -30),
-        ]
-        entries.forEach { text, sender, ago in
-            appendMessage(.text(text, sender: sender, sentAt: now - ago))
-        }
-
-        // 添加位置消息示例（Apple Park）
-        appendMessage(.location(latitude: 37.3349, longitude: -122.0090, address: "Apple Park, Cupertino, CA", sender: .peer, sentAt: now - 40))
+        mapItem.openInMaps(launchOptions: nil)
     }
 }

@@ -4,7 +4,7 @@ import Foundation
 ///
 /// `id` 用于区分"自己"与"对方"并生成头像颜色；`displayName` 取首字母作为头像文字。
 /// 实际项目中替换为服务器返回的用户 ID 与昵称。
-struct Sender: Sendable, Hashable {
+struct Sender: Sendable, Hashable, Codable {
 
     let id: String
     let displayName: String

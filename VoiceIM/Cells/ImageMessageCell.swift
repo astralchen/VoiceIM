@@ -3,6 +3,7 @@ import UIKit
 @MainActor
 protocol ImageMessageCellDelegate: AnyObject {
     func cellDidTapImage(_ cell: ImageMessageCell, message: ChatMessage)
+    func cellDidLoadImage(_ cell: ImageMessageCell, heightDelta: CGFloat)
 }
 
 /// 图片消息 Cell，继承 ChatBubbleCell 获得时间分隔行、头像和收/发方向布局。
@@ -24,6 +25,18 @@ final class ImageMessageCell: ChatBubbleCell {
     private var imageWidthConstraint: NSLayoutConstraint!
     private var imageHeightConstraint: NSLayoutConstraint!
 
+    // 【关键属性】当前加载的 URL，用于避免重复加载
+    // 原因：Cell 复用时会多次调用 configure，需要判断是否是同一张图片
+    // 效果：相同 URL 不会重复加载，提升性能
+    private var currentImageURL: URL?
+
+    // 【关键属性】图片缓存（简单的内存缓存）
+    // nonisolated(unsafe)：允许从任何线程访问，NSCache 本身是线程安全的
+    // 原因：图片解码是 CPU 密集操作，缓存可以显著提升滚动性能
+    // 效果：滚动时从缓存加载，高度立即确定，不会跳变
+    // 注意：NSCache 会在内存压力时自动清理，无需手动管理
+    private nonisolated(unsafe) static var imageCache = NSCache<NSURL, UIImage>()
+
     // MARK: - 初始化
 
     override init(frame: CGRect) {
@@ -32,6 +45,20 @@ final class ImageMessageCell: ChatBubbleCell {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: - Cell 复用
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+
+        // 【关键清理】重置 Cell 状态，避免复用时显示错误内容
+        // 原因：CollectionView 会复用 Cell，如果不清理，可能显示上一条消息的图片
+        // 效果：确保每次配置 Cell 时都是干净的状态
+        imageView.image = nil
+        loadingIndicator.stopAnimating()
+        currentImageURL = nil
+        // 注意：不清理 imageCache，因为它是静态缓存，所有 Cell 共享
+    }
 
     // MARK: - UI 搭建
 
@@ -57,6 +84,14 @@ final class ImageMessageCell: ChatBubbleCell {
         imageWidthConstraint = imageView.widthAnchor.constraint(equalToConstant: 200)
         imageHeightConstraint = imageView.heightAnchor.constraint(equalToConstant: 200)
 
+        // 【关键设置】降低优先级，避免与 Cell 自动计算的高度冲突
+        // 原因：CollectionView 会自动计算 Cell 的高度（UIView-Encapsulated-Layout-Height）
+        //      如果图片约束是 .required 优先级，会与自动高度约束冲突
+        // 效果：避免约束冲突警告，让系统可以灵活调整布局
+        // 优先级：.defaultHigh (750) < .required (1000)
+        imageWidthConstraint.priority = .defaultHigh
+        imageHeightConstraint.priority = .defaultHigh
+
         NSLayoutConstraint.activate([
             // 图片视图填充整个气泡
             imageView.topAnchor.constraint(equalTo: bubble.topAnchor),
@@ -78,6 +113,15 @@ final class ImageMessageCell: ChatBubbleCell {
     func configure(with message: ChatMessage, imageURL: URL?) {
         self.message = message
 
+        // 【关键优化】避免重复加载：如果 URL 相同且图片已加载，跳过
+        // 原因：Cell 复用时会多次调用 configure，但图片已在内存中，无需重新加载
+        // 效果：减少磁盘 I/O，避免闪烁，提升滚动性能
+        if let url = imageURL, url == currentImageURL, imageView.image != nil {
+            return
+        }
+
+        currentImageURL = imageURL
+
         if let url = imageURL {
             loadImage(from: url)
         } else {
@@ -87,9 +131,18 @@ final class ImageMessageCell: ChatBubbleCell {
     }
 
     private func loadImage(from url: URL) {
+        // 【关键优化】优先使用缓存：避免重复解码图片
+        // 原因：图片解码是 CPU 密集操作，缓存可以显著提升性能
+        // 效果：滚动时从缓存加载，高度立即确定，不会跳变
+        if let cachedImage = Self.imageCache.object(forKey: url as NSURL) {
+            imageView.image = cachedImage
+            let _ = updateImageSize(for: cachedImage)
+            return
+        }
+
         loadingIndicator.startAnimating()
 
-        // 简单的图片加载（生产环境应使用 SDWebImage 等库）
+        // 异步加载图片
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let data = try? Data(contentsOf: url),
                   let image = UIImage(data: data) else {
@@ -99,11 +152,39 @@ final class ImageMessageCell: ChatBubbleCell {
                 return
             }
 
+            // 缓存图片
+            Self.imageCache.setObject(image, forKey: url as NSURL)
+
             DispatchQueue.main.async {
+                // 【关键检查】防止 Cell 复用错乱：确保 URL 没有变化
+                // 原因：异步加载期间，Cell 可能被复用并配置了新的 URL
+                // 效果：避免显示错误的图片（A 消息的 Cell 显示 B 消息的图片）
+                guard self?.currentImageURL == url else { return }
+
                 self?.imageView.image = image
                 self?.loadingIndicator.stopAnimating()
-                // 根据图片尺寸更新约束
-                self?.updateImageSize(for: image)
+
+                // 根据图片尺寸更新约束，获取高度变化量
+                let heightDelta = self?.updateImageSize(for: image) ?? 0
+
+                // 【关键步骤】通知 CollectionView 重新计算布局
+                // 原因：约束更新后，CollectionView 不会自动刷新布局
+                // 效果：触发 Cell 高度重新计算，图片立即显示正确尺寸
+                var view = self?.superview
+                while view != nil && !(view is UICollectionView) {
+                    view = view?.superview
+                }
+                if let collectionView = view as? UICollectionView {
+                    // 使用 performBatchUpdates 触发布局更新
+                    collectionView.performBatchUpdates(nil)
+                }
+
+                // 【关键回调】通知 ViewController 图片已加载，传递高度变化量
+                // 原因：ViewController 需要根据用户位置决定是否调整滚动
+                // 效果：实现智能滚动策略（底部自动滚动，中间保持位置）
+                if let self = self, heightDelta != 0 {
+                    self.delegate?.cellDidLoadImage(self, heightDelta: heightDelta)
+                }
             }
         }
     }
@@ -117,9 +198,16 @@ final class ImageMessageCell: ChatBubbleCell {
     /// - 最小高度：80pt
     /// - 保持原图宽高比
     /// - 特殊处理：超长图（高宽比 > 3）、超宽图（宽高比 > 3）
-    private func updateImageSize(for image: UIImage) {
+    ///
+    /// - Returns: 高度变化量（用于滚动补偿）
+    private func updateImageSize(for image: UIImage) -> CGFloat {
         let imageSize = image.size
-        guard imageSize.width > 0, imageSize.height > 0 else { return }
+        guard imageSize.width > 0, imageSize.height > 0 else { return 0 }
+
+        // 【关键】记录旧高度，用于计算变化量
+        // 原因：ViewController 需要知道高度变化了多少，才能精确补偿滚动位置
+        // 效果：用户阅读中间消息时，位置保持不变
+        let oldHeight = imageHeightConstraint.constant
 
         let maxWidth: CGFloat = 250
         let maxHeight: CGFloat = 350
@@ -179,6 +267,11 @@ final class ImageMessageCell: ChatBubbleCell {
         // 更新约束
         imageWidthConstraint.constant = displayWidth
         imageHeightConstraint.constant = displayHeight
+
+        // 【关键】返回高度变化量
+        // 原因：ViewController 需要这个值来决定是否调整滚动位置
+        // 效果：实现智能滚动补偿
+        return displayHeight - oldHeight
     }
 
     // MARK: - 事件处理

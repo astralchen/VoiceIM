@@ -16,6 +16,12 @@ xcodebuild -project VoiceIM.xcodeproj \
   CODE_SIGNING_ALLOWED=NO \
   build
 
+# 运行单元测试
+xcodebuild test \
+  -project VoiceIM.xcodeproj \
+  -scheme VoiceIMTests \
+  -destination "platform=iOS Simulator,name=iPhone 15"
+
 # 用 Xcode 打开工程
 open VoiceIM.xcodeproj
 ```
@@ -27,29 +33,91 @@ open VoiceIM.xcodeproj
 - **Swift 6.0**，严格并发检查开启（`ENABLE_STRICT_OBJC_MSGSEND: YES`）
 - **UIKit**，无 SwiftUI
 - **iOS 15.0+**
+- **Swift Testing**：单元测试框架（iOS 15+）
 - **AVFoundation**：`AVAudioRecorder`（录音）、`AVAudioPlayer`（播放）、`AVAsset`（视频处理）
 - **AVKit**：`AVPlayerViewController`（视频播放）
 - **PhotosUI**：`PHPickerViewController`（相册选择，iOS 14+）
 - 列表：`UICollectionViewDiffableDataSource` + `UICollectionViewCompositionalLayout`（均为 iOS 13 API）
 
-## 架构概览
+## 架构概览（2024 重构版）
 
-代码按功能分为 7 个文件夹：`App`、`Models`、`Views`、`ViewControllers`、`Managers`、`Cells`、`Protocols`。无第三方依赖。
-
-### 数据流
+项目采用 **MVVM + Repository** 架构，代码按层级组织：
 
 ```
-VoiceRecordManager          VoiceCacheManager（actor）
-      │ 录音文件 URL                │ 下载并缓存远程 URL
-      ▼                            ▼
-VoiceChatViewController ──── ChatMessage（数据模型）
-      │                            │
-      │  DiffableDataSource        │ messages: [ChatMessage]（可变状态）
-      │  snapshot（仅存顺序/id）    │ isPlayed/sendStatus 在此更新
-      ▼                            ▼
-MessageCell (5种)         VoicePlaybackManager
-  进度滑块 / 红点 / 状态指示器    播放互斥 / 进度回调
+VoiceIM/
+├── Core/                          # 核心层（业务无关）
+│   ├── Error/                     # 统一错误处理
+│   │   ├── ChatError.swift        # 错误类型定义
+│   │   └── ErrorHandler.swift    # 错误展示策略
+│   ├── Logging/                   # 日志系统
+│   │   └── Logger.swift           # 日志协议和实现
+│   ├── Storage/                   # 存储层
+│   │   ├── FileStorageManager.swift   # 文件管理
+│   │   └── MessageStorage.swift       # 消息持久化
+│   ├── Repository/                # 数据仓库层
+│   │   └── MessageRepository.swift    # 消息业务逻辑
+│   ├── ViewModel/                 # 视图模型层
+│   │   └── ChatViewModel.swift        # 聊天状态管理
+│   ├── Protocols/                 # 协议抽象
+│   │   └── ServiceProtocols.swift     # 服务接口定义
+│   └── DependencyInjection/       # 依赖注入
+│       └── AppDependencies.swift      # 依赖容器
+├── Models/                        # 数据模型
+├── Views/                         # 自定义视图
+├── ViewControllers/               # 视图控制器
+├── Managers/                      # 服务管理器
+├── Cells/                         # 列表 Cell
+└── Protocols/                     # UI 协议
+
+VoiceIMTests/                      # 单元测试
+├── MessageRepositoryTests.swift
+├── FileStorageManagerTests.swift
+├── ChatErrorTests.swift
+└── LoggerTests.swift
 ```
+
+### 架构原则
+
+1. **依赖注入**：通过 `AppDependencies` 容器管理所有服务实例，替代 `.shared` 单例
+2. **协议抽象**：核心服务定义协议接口，便于测试和替换实现
+3. **单一数据源**：`ChatViewModel` 使用 `@Published` 管理状态，ViewController 订阅变化
+4. **错误统一处理**：所有错误归类到 `ChatError`，通过 `ErrorHandler` 统一展示
+5. **日志系统**：使用 `VoiceIM.logger` 全局实例，支持多目标输出
+
+### 数据流（新架构）
+
+```
+用户操作
+   ↓
+ViewController → ChatViewModel (状态管理)
+                      ↓
+                MessageRepository (业务逻辑)
+                      ↓
+        ┌─────────────┼─────────────┐
+        ↓             ↓             ↓
+  MessageStorage  FileStorage  NetworkService
+   (持久化)        (文件)        (网络)
+        ↓             ↓             ↓
+    JSON 文件      本地文件      服务器 API
+```
+
+**关键组件**：
+
+- **ChatViewModel**：管理消息列表、播放状态、录音状态，提供单一数据源
+- **MessageRepository**：封装消息发送、删除、撤回等业务逻辑
+- **MessageStorage**：消息持久化到本地 JSON 文件
+- **FileStorageManager**：统一管理录音/图片/视频文件的存储和清理
+- **ErrorHandler**：根据错误类型选择展示方式（Toast/Alert/Banner）
+- **Logger**：支持控制台和文件日志，可组合多个输出目标
+
+### 旧架构兼容性
+
+当前 ViewController 仍使用旧架构（直接操作 MessageDataSource），新架构组件已就绪但尚未集成。迁移步骤：
+
+1. 在 `SceneDelegate` 中初始化 `AppDependencies`
+2. 创建 `ChatViewModel` 实例并注入依赖
+3. 修改 `VoiceChatViewController` 订阅 ViewModel 的 `@Published` 属性
+4. 移除 `simulateSendMessage` 等业务逻辑，改为调用 ViewModel 方法
 
 ### 并发模型
 

@@ -3,7 +3,7 @@ import Foundation
 
 /// 录音管理器（主线程单例）
 @MainActor
-final class VoiceRecordManager: NSObject {
+final class VoiceRecordManager: NSObject, AudioRecordService {
 
     static let shared = VoiceRecordManager()
 

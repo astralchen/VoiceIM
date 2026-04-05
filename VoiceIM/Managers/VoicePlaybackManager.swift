@@ -3,7 +3,7 @@ import Foundation
 
 /// 语音播放管理器（主线程单例，同时只允许一条语音播放）
 @MainActor
-final class VoicePlaybackManager: NSObject {
+final class VoicePlaybackManager: NSObject, AudioPlaybackService {
 
     static let shared = VoicePlaybackManager()
 
