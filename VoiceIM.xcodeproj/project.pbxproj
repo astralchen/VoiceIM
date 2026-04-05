@@ -45,6 +45,7 @@
 		CA6D560A6F81280000D7AEAD /* MessageDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6A8DBEFCFEF07BA1010BEE /* MessageDataSource.swift */; };
 		CC55D3F85D195A6DEDB6D751 /* RecordingOverlayViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5615CDCD271D478590753D54 /* RecordingOverlayViewController.swift */; };
 		D0193CAF0C9CD429F5586974 /* LocationMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F0E6E8B3CE4EEF69E8A68DE /* LocationMessageCell.swift */; };
+		D309D87237722F2C1A7A4A1D /* VideoCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CE1F87A9DFE80B1F1B9FE61 /* VideoCacheManager.swift */; };
 		D72BC6CAC0CBB02180E14018 /* WaveformProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44994233323BB3EE477F0BF /* WaveformProgressView.swift */; };
 		D7566144AABE38618797F5C8 /* FileStorageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8ED7746513B48938CFDF1FF /* FileStorageManager.swift */; };
 		E258B0AB713F285946F96ADD /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F667E00C71EC1040F986296 /* ChatMessage.swift */; };
@@ -74,6 +75,7 @@
 		202375FF5D1E7C999D14F0CD /* AppDependencies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDependencies.swift; sourceTree = "<group>"; };
 		2289A31D4843A128ED73E45D /* ImageCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheManager.swift; sourceTree = "<group>"; };
 		2B09AF217DB14CB120A07C7F /* VideoMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoMessageCell.swift; sourceTree = "<group>"; };
+		2CE1F87A9DFE80B1F1B9FE61 /* VideoCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoCacheManager.swift; sourceTree = "<group>"; };
 		3013B60CE7DBA4F5D4F00B26 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		41488FDE0AC88B7E19F6DDA5 /* VoiceMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageCell.swift; sourceTree = "<group>"; };
 		42BACD30F535B667AE19DED0 /* ChatError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatError.swift; sourceTree = "<group>"; };
@@ -257,6 +259,7 @@
 				4E6A8DBEFCFEF07BA1010BEE /* MessageDataSource.swift */,
 				517224B7F44D4F1D6A25E4BD /* MessagePreloader.swift */,
 				D977382F54C6E581B9DA915C /* PhotoPickerManager.swift */,
+				2CE1F87A9DFE80B1F1B9FE61 /* VideoCacheManager.swift */,
 				B5457CA68E390A12522AF988 /* VideoPlayerManager.swift */,
 				84D17C9EF84D9F9D362B6F77 /* VoiceCacheManager.swift */,
 				B9BC1FC5AAE41BCD72109909 /* VoicePlaybackManager.swift */,
@@ -468,6 +471,7 @@
 				24BF94103557B449A3C24E9A /* Sender.swift in Sources */,
 				533804A0E73FC812CE52CE82 /* TextMessageCell.swift in Sources */,
 				E289BE59A9EA8014C4BE7528 /* ToastView.swift in Sources */,
+				D309D87237722F2C1A7A4A1D /* VideoCacheManager.swift in Sources */,
 				C4E3095021C37BCD567D3BF5 /* VideoMessageCell.swift in Sources */,
 				7F3A562BBEF8ACC4885071DF /* VideoPlayerManager.swift in Sources */,
 				70158FB2F31287DB5504EDF0 /* VideoPlayerView.swift in Sources */,

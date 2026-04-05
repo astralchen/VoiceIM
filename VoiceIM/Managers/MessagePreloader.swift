@@ -128,18 +128,26 @@ final class MessagePreloader {
             // 跳过已预加载的消息
             guard !preloadedMessageIDs.contains(message.id) else { continue }
 
-            // 只预加载图片消息
-            guard case .image(let localURL, _) = message.kind,
-                  let imageURL = localURL else { continue }
-
             // 标记为已预加载
             preloadedMessageIDs.insert(message.id)
 
-            // 异步预加载
-            Task {
-                let targetSize = CGSize(width: 250, height: 350)
-                await ImageCacheManager.shared.preloadImage(from: imageURL, targetSize: targetSize)
-                VoiceIM.logger.debug("Preloaded image for message: \(message.id)")
+            // 预加载图片消息
+            if case .image(let localURL, _) = message.kind,
+               let imageURL = localURL {
+                Task {
+                    let targetSize = CGSize(width: 250, height: 350)
+                    await ImageCacheManager.shared.preloadImage(from: imageURL, targetSize: targetSize)
+                    VoiceIM.logger.debug("Preloaded image for message: \(message.id)")
+                }
+            }
+
+            // 预加载视频缩略图
+            if case .video(let localURL, _, _) = message.kind,
+               let videoURL = localURL {
+                Task {
+                    _ = await VideoCacheManager.shared.loadThumbnail(from: videoURL)
+                    VoiceIM.logger.debug("Preloaded video thumbnail for message: \(message.id)")
+                }
             }
         }
     }

@@ -23,6 +23,9 @@ final class VideoMessageCell: ChatBubbleCell {
     private let durationLabel = UILabel()
     private let loadingIndicator = UIActivityIndicatorView(style: .medium)
 
+    /// 当前加载的视频 URL（防止 Cell 复用时加载错误）
+    private var currentVideoURL: URL?
+
     // MARK: - 初始化
 
     override init(frame: CGRect) {
@@ -31,6 +34,15 @@ final class VideoMessageCell: ChatBubbleCell {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: - Cell 复用
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        thumbnailView.image = nil
+        loadingIndicator.stopAnimating()
+        currentVideoURL = nil
+    }
 
     // MARK: - UI 搭建
 
@@ -109,6 +121,13 @@ final class VideoMessageCell: ChatBubbleCell {
         let secs = Int(duration) % 60
         durationLabel.text = String(format: " %d:%02d ", mins, secs)
 
+        // 【关键优化】避免重复加载：如果 URL 相同且缩略图已加载，跳过
+        if let url = videoURL, url == currentVideoURL, thumbnailView.image != nil {
+            return
+        }
+
+        currentVideoURL = videoURL
+
         if let url = videoURL {
             loadThumbnail(from: url)
         } else {
@@ -120,22 +139,28 @@ final class VideoMessageCell: ChatBubbleCell {
     private func loadThumbnail(from url: URL) {
         loadingIndicator.startAnimating()
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let asset = AVAsset(url: url)
-            let imageGenerator = AVAssetImageGenerator(asset: asset)
-            imageGenerator.appliesPreferredTrackTransform = true
+        // 【性能优化】使用统一的 VideoCacheManager
+        // 优势：
+        // 1. 两级缓存（内存 + 磁盘）
+        // 2. 异步生成缩略图
+        // 3. 防止重复生成
+        // 4. 自动内存管理
+        Task { [weak self] in
+            guard let self else { return }
 
-            do {
-                let cgImage = try imageGenerator.copyCGImage(at: .zero, actualTime: nil)
-                let thumbnail = UIImage(cgImage: cgImage)
+            // 异步加载缩略图
+            let thumbnail = await VideoCacheManager.shared.loadThumbnail(from: url)
 
-                DispatchQueue.main.async {
-                    self?.thumbnailView.image = thumbnail
-                    self?.loadingIndicator.stopAnimating()
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self?.loadingIndicator.stopAnimating()
+            await MainActor.run {
+                // 【关键检查】防止 Cell 复用错乱
+                guard self.currentVideoURL == url else { return }
+
+                self.loadingIndicator.stopAnimating()
+
+                if let thumbnail = thumbnail {
+                    self.thumbnailView.image = thumbnail
+                } else {
+                    VoiceIM.logger.warning("Failed to load video thumbnail: \(url)")
                 }
             }
         }
