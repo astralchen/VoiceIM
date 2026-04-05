@@ -21,8 +21,8 @@ actor VideoCacheManager {
 
     // MARK: - Properties
 
-    /// 缩略图内存缓存
-    private let thumbnailCache = NSCache<NSURL, UIImage>()
+    /// 缩略图内存缓存（nonisolated(unsafe)：NSCache 本身线程安全，允许 nonisolated 同步访问）
+    private nonisolated(unsafe) let thumbnailCache = NSCache<NSString, UIImage>()
 
     /// 视频文件缓存目录
     private let videoCacheURL: URL
@@ -66,6 +66,77 @@ actor VideoCacheManager {
         }
     }
 
+    // MARK: - Save & Cache
+
+    /// 将临时视频文件持久化到视频缓存目录，并预生成缩略图（用于发送视频消息）
+    ///
+    /// 流程与 `ImageCacheManager.saveAndCacheImage` 对称：
+    /// - 复制文件到 `videoCacheURL/`（后台线程，避免阻塞 actor）
+    /// - 预生成缩略图并写入内存 + 磁盘缓存
+    ///
+    /// - Parameter tempURL: 临时视频文件 URL
+    /// - Returns: 视频缓存目录中的永久路径（存储到 ChatMessage.kind 里）
+    func saveAndCacheVideo(from tempURL: URL) async throws -> URL {
+        let fileName = stableDiskFileName(for: tempURL)
+        let permanentURL = videoCacheURL.appendingPathComponent(fileName)
+
+        // 视频文件可能较大，在后台线程执行拷贝
+        try await Task.detached(priority: .userInitiated) {
+            try FileManager.default.copyItem(at: tempURL, to: permanentURL)
+        }.value
+
+        VoiceIM.logger.info("💾 Saved video: \(fileName)")
+
+        // 预生成并缓存缩略图（确保列表首屏无闪烁）
+        _ = await loadThumbnail(from: permanentURL)
+
+        return permanentURL
+    }
+
+    // MARK: - URL Resolution
+
+    /// 解析视频 URL，优先级：本地文件 → 视频缓存目录（路径失效时） → 远程 URL
+    ///
+    /// Codable decode 用文件名 + `videoDirectory` 重建路径，但视频实际存在 `videoCacheURL`。
+    /// 此处检测路径失效后，按文件名在 `videoCacheURL` 中查找。
+    nonisolated func resolveVideoURL(local localURL: URL?, remote remoteURL: URL?) -> URL? {
+        if let localURL {
+            if FileManager.default.fileExists(atPath: localURL.path) {
+                return localURL
+            }
+            // 路径失效，按 stableDiskFileName 在视频缓存目录中查找
+            let cached = videoCacheURL.appendingPathComponent(stableDiskFileName(for: localURL))
+            if FileManager.default.fileExists(atPath: cached.path) {
+                return cached
+            }
+        }
+        return remoteURL
+    }
+
+    // MARK: - Sync Cache Check
+
+    /// 同步查询缩略图缓存（内存 → 磁盘），命中时直接返回，避免异步加载闪烁
+    nonisolated func cachedThumbnail(for videoURL: URL) -> UIImage? {
+        let key = memoryCacheKey(for: videoURL)
+
+        // 1. 内存缓存
+        if let image = thumbnailCache.object(forKey: key as NSString) {
+            return image
+        }
+
+        // 2. 磁盘缓存（缩略图为小尺寸 JPEG，同步 I/O 可接受）
+        let diskPath = thumbnailCacheURL.appendingPathComponent(thumbnailCacheKey(for: videoURL)).path
+        guard FileManager.default.fileExists(atPath: diskPath),
+              let image = UIImage(contentsOfFile: diskPath) else {
+            return nil
+        }
+
+        // 回写内存缓存
+        let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+        thumbnailCache.setObject(image, forKey: key as NSString, cost: cost)
+        return image
+    }
+
     // MARK: - Public API
 
     /// 加载视频缩略图（带缓存）
@@ -76,7 +147,7 @@ actor VideoCacheManager {
     /// - Returns: 缩略图，失败返回 nil
     func loadThumbnail(from videoURL: URL, at time: CMTime = CMTime(seconds: 1, preferredTimescale: 600)) async -> UIImage? {
         // 1. 检查内存缓存
-        if let cachedThumbnail = thumbnailCache.object(forKey: videoURL as NSURL) {
+        if let cachedThumbnail = thumbnailCache.object(forKey: memoryCacheKey(for: videoURL) as NSString) {
             return cachedThumbnail
         }
 
@@ -119,7 +190,7 @@ actor VideoCacheManager {
     /// - Returns: 本地缓存的 URL
     func cacheVideo(from remoteURL: URL) async throws -> URL {
         // 检查是否已缓存
-        let cacheKey = videoCacheKey(for: remoteURL)
+        let cacheKey = stableDiskFileName(for: remoteURL)
         let cacheURL = videoCacheURL.appendingPathComponent(cacheKey)
 
         if FileManager.default.fileExists(atPath: cacheURL.path) {
@@ -228,7 +299,14 @@ actor VideoCacheManager {
     /// 缓存到内存
     private func cacheInMemory(thumbnail: UIImage, for videoURL: URL) {
         let cost = Int(thumbnail.size.width * thumbnail.size.height * thumbnail.scale * thumbnail.scale * 4)
-        thumbnailCache.setObject(thumbnail, forKey: videoURL as NSURL, cost: cost)
+        thumbnailCache.setObject(thumbnail, forKey: memoryCacheKey(for: videoURL) as NSString, cost: cost)
+    }
+
+    /// 内存缓存键：本地文件用规范路径，远程用完整 URL 字符串（与 ImageCacheManager.memoryCacheKey 逻辑一致）
+    ///
+    /// `url.standardized.path` 解析符号链接，确保 `/var/...` 和 `/private/var/...` 映射到同一键。
+    private nonisolated func memoryCacheKey(for url: URL) -> String {
+        url.isFileURL ? url.standardized.path : url.absoluteString
     }
 
     /// 保存缩略图到磁盘
@@ -242,17 +320,30 @@ actor VideoCacheManager {
         }.value
     }
 
-    /// 生成视频缓存的文件名
-    private func videoCacheKey(for url: URL) -> String {
-        let hash = abs(url.absoluteString.hashValue)
+    /// 视频磁盘缓存文件名（本地和远程 URL 通用）
+    ///
+    /// - 本地文件：直接取 `lastPathComponent`（UUID 命名，天然唯一且稳定）
+    /// - 远程 URL：用 djb2 哈希生成文件名（跨进程/重启稳定，不依赖 Swift.hashValue）
+    nonisolated func stableDiskFileName(for url: URL) -> String {
+        if url.isFileURL {
+            return url.lastPathComponent
+        }
+        let string = url.absoluteString
+        var hash: UInt64 = 5381
+        for byte in string.utf8 {
+            hash = hash &* 127 &+ UInt64(byte)
+        }
         let ext = url.pathExtension.isEmpty ? "mp4" : url.pathExtension
         return "\(hash).\(ext)"
     }
 
-    /// 生成缩略图缓存的文件名
-    private func thumbnailCacheKey(for url: URL) -> String {
-        let hash = abs(url.absoluteString.hashValue)
-        return "\(hash).jpg"
+    /// 缩略图磁盘缓存文件名（复用 stableDiskFileName，替换扩展名为 .jpg）
+    ///
+    /// - 本地 `abc123.mp4` → `abc123.jpg`
+    /// - 远程 `12345678.mp4` → `12345678.jpg`
+    private nonisolated func thumbnailCacheKey(for url: URL) -> String {
+        let base = (stableDiskFileName(for: url) as NSString).deletingPathExtension
+        return base + ".jpg"
     }
 
     /// 获取磁盘缓存大小

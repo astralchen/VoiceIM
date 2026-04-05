@@ -41,6 +41,7 @@ final class VideoMessageCell: ChatBubbleCell {
         super.prepareForReuse()
         thumbnailView.image = nil
         loadingIndicator.stopAnimating()
+        playButton.isHidden = true
         currentVideoURL = nil
     }
 
@@ -50,7 +51,7 @@ final class VideoMessageCell: ChatBubbleCell {
         // 缩略图视图
         thumbnailView.contentMode = .scaleAspectFill
         thumbnailView.clipsToBounds = true
-        thumbnailView.backgroundColor = .systemGray6
+        thumbnailView.backgroundColor = .systemGray5
         thumbnailView.isUserInteractionEnabled = true
         thumbnailView.translatesAutoresizingMaskIntoConstraints = false
         bubble.addSubview(thumbnailView)
@@ -59,36 +60,43 @@ final class VideoMessageCell: ChatBubbleCell {
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(videoTapped))
         thumbnailView.addGestureRecognizer(tapGesture)
 
-        // 播放按钮
-        playButton.setImage(UIImage(systemName: "play.circle.fill"), for: .normal)
+        // 播放按钮（使用大号 SF Symbol，天然带圆形填充背景，无需额外背景色）
+        let symbolConfig = UIImage.SymbolConfiguration(pointSize: 44, weight: .regular)
+        playButton.setImage(UIImage(systemName: "play.circle.fill", withConfiguration: symbolConfig), for: .normal)
         playButton.tintColor = .white
-        playButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        playButton.layer.cornerRadius = 25
         playButton.isUserInteractionEnabled = false
+        playButton.isHidden = true  // 缩略图加载完成前隐藏
         playButton.translatesAutoresizingMaskIntoConstraints = false
+        // 投影让播放按钮在亮色缩略图上也清晰可见
+        playButton.layer.shadowColor = UIColor.black.cgColor
+        playButton.layer.shadowOpacity = 0.4
+        playButton.layer.shadowRadius = 4
+        playButton.layer.shadowOffset = CGSize(width: 0, height: 2)
         bubble.addSubview(playButton)
 
-        // 时长标签
+        // 时长标签右下角
         durationLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         durationLabel.textColor = .white
-        durationLabel.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        durationLabel.backgroundColor = UIColor.black.withAlphaComponent(0.55)
         durationLabel.layer.cornerRadius = 4
         durationLabel.layer.masksToBounds = true
         durationLabel.textAlignment = .center
         durationLabel.translatesAutoresizingMaskIntoConstraints = false
         bubble.addSubview(durationLabel)
 
-        // 加载指示器
+        // 加载指示器（large + white，在灰色背景上清晰可见，层级高于缩略图）
+        loadingIndicator.style = .large
+        loadingIndicator.color = .white
         loadingIndicator.hidesWhenStopped = true
         loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
         bubble.addSubview(loadingIndicator)
 
-        // 【关键修复】降低宽高约束优先级，避免与 Cell 自动高度冲突
+        // 降低宽高约束优先级，避免与 Cell 自动高度冲突
         let widthConstraint = thumbnailView.widthAnchor.constraint(equalToConstant: 200)
-        widthConstraint.priority = .defaultHigh  // 750，低于 required (1000)
+        widthConstraint.priority = .defaultHigh
 
         let heightConstraint = thumbnailView.heightAnchor.constraint(equalToConstant: 200)
-        heightConstraint.priority = .defaultHigh  // 750，低于 required (1000)
+        heightConstraint.priority = .defaultHigh
 
         NSLayoutConstraint.activate([
             // 缩略图填充整个气泡
@@ -96,15 +104,12 @@ final class VideoMessageCell: ChatBubbleCell {
             thumbnailView.leadingAnchor.constraint(equalTo: bubble.leadingAnchor),
             thumbnailView.trailingAnchor.constraint(equalTo: bubble.trailingAnchor),
             thumbnailView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor),
-            // 固定宽高比（降低优先级）
             widthConstraint,
             heightConstraint,
 
-            // 播放按钮居中
+            // 播放按钮居中（尺寸由 SF Symbol pointSize 决定，不再硬设宽高）
             playButton.centerXAnchor.constraint(equalTo: bubble.centerXAnchor),
             playButton.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
-            playButton.widthAnchor.constraint(equalToConstant: 50),
-            playButton.heightAnchor.constraint(equalToConstant: 50),
 
             // 时长标签右下角
             durationLabel.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -8),
@@ -112,7 +117,7 @@ final class VideoMessageCell: ChatBubbleCell {
             durationLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40),
             durationLabel.heightAnchor.constraint(equalToConstant: 20),
 
-            // 加载指示器居中
+            // 加载指示器居中（加载时独占中央，不与播放按钮重叠）
             loadingIndicator.centerXAnchor.constraint(equalTo: bubble.centerXAnchor),
             loadingIndicator.centerYAnchor.constraint(equalTo: bubble.centerYAnchor),
         ])
@@ -139,38 +144,41 @@ final class VideoMessageCell: ChatBubbleCell {
             loadThumbnail(from: url)
         } else {
             thumbnailView.image = nil
+            playButton.isHidden = true
             loadingIndicator.stopAnimating()
         }
     }
 
     private func loadThumbnail(from url: URL) {
+        // 同步检查缓存（内存 + 磁盘），命中则立即显示，无任何闪烁
+        if let cached = VideoCacheManager.shared.cachedThumbnail(for: url) {
+            applyThumbnail(cached)
+            return
+        }
+
+        // 缓存未命中：隐藏播放按钮，显示加载指示器
+        playButton.isHidden = true
         loadingIndicator.startAnimating()
 
-        // 【性能优化】使用统一的 VideoCacheManager
-        // 优势：
-        // 1. 两级缓存（内存 + 磁盘）
-        // 2. 异步生成缩略图
-        // 3. 防止重复生成
-        // 4. 自动内存管理
         Task { [weak self] in
             guard let self else { return }
-
-            // 异步加载缩略图
             let thumbnail = await VideoCacheManager.shared.loadThumbnail(from: url)
-
             await MainActor.run {
-                // 【关键检查】防止 Cell 复用错乱
                 guard self.currentVideoURL == url else { return }
-
                 self.loadingIndicator.stopAnimating()
-
-                if let thumbnail = thumbnail {
-                    self.thumbnailView.image = thumbnail
+                if let thumbnail {
+                    self.applyThumbnail(thumbnail)
                 } else {
                     VoiceIM.logger.warning("Failed to load video thumbnail: \(url)")
                 }
             }
         }
+    }
+
+    /// 应用缩略图并显示播放按钮
+    private func applyThumbnail(_ image: UIImage) {
+        thumbnailView.image = image
+        playButton.isHidden = false
     }
 
     // MARK: - 事件处理
@@ -192,11 +200,11 @@ extension VideoMessageCell: MessageCellConfigurable {
         // 设置 delegate
         delegate = deps.videoDelegate
 
-        // 获取视频 URL 和时长
+        // 获取视频 URL（本地文件存在则优先，否则回退到远程 URL）
         let videoURL: URL?
         let duration: TimeInterval
         if case .video(let localURL, let remoteURL, let dur) = message.kind {
-            videoURL = localURL ?? remoteURL
+            videoURL = VideoCacheManager.shared.resolveVideoURL(local: localURL, remote: remoteURL)
             duration = dur
         } else {
             videoURL = nil

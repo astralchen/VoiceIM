@@ -145,16 +145,18 @@ final class ChatViewModel: ObservableObject {
     ///
     /// - Parameter url: 图片文件 URL
     func sendImageMessage(url: URL) {
-        do {
-            let message = try repository.sendImageMessage(tempURL: url)
-            messages.append(message)
-            logger.info("Sent image message: \(message.id)")
+        Task {
+            do {
+                let message = try await repository.sendImageMessage(tempURL: url)
+                messages.append(message)
+                logger.info("Sent image message: \(message.id)")
 
-            // 发送到服务器
-            sendMessageToServer(id: message.id)
-        } catch {
-            logger.error("Failed to send image message: \(error)")
-            self.error = error as? ChatError ?? .unknown(error)
+                // 发送到服务器
+                sendMessageToServer(id: message.id)
+            } catch {
+                logger.error("Failed to send image message: \(error)")
+                self.error = error as? ChatError ?? .unknown(error)
+            }
         }
     }
 
@@ -164,16 +166,18 @@ final class ChatViewModel: ObservableObject {
     ///   - url: 视频文件 URL
     ///   - duration: 视频时长
     func sendVideoMessage(url: URL, duration: TimeInterval) {
-        do {
-            let message = try repository.sendVideoMessage(tempURL: url, duration: duration)
-            messages.append(message)
-            logger.info("Sent video message: \(message.id)")
+        Task {
+            do {
+                let message = try await repository.sendVideoMessage(tempURL: url, duration: duration)
+                messages.append(message)
+                logger.info("Sent video message: \(message.id)")
 
-            // 发送到服务器
-            sendMessageToServer(id: message.id)
-        } catch {
-            logger.error("Failed to send video message: \(error)")
-            self.error = error as? ChatError ?? .unknown(error)
+                // 发送到服务器
+                sendMessageToServer(id: message.id)
+            } catch {
+                logger.error("Failed to send video message: \(error)")
+                self.error = error as? ChatError ?? .unknown(error)
+            }
         }
     }
 

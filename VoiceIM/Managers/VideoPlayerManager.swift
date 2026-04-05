@@ -19,45 +19,19 @@ actor VideoPlayerManager {
 
     private(set) var state: VideoPlaybackState = .idle
 
-    // 使用私有存储属性 + nonisolated 计算属性包装
     private var _onProgress: (@MainActor (TimeInterval, TimeInterval) -> Void)?
     private var _onStateChange: (@MainActor (VideoPlaybackState) -> Void)?
     private var _onFinish: (@MainActor () -> Void)?
 
-    /// 播放进度回调 (当前时间, 总时长)
-    nonisolated var onProgress: (@MainActor (TimeInterval, TimeInterval) -> Void)? {
-        get { nil }
-        set {
-            Task { await self.setOnProgress(newValue) }
-        }
-    }
-
-    /// 状态变化回调
-    nonisolated var onStateChange: (@MainActor (VideoPlaybackState) -> Void)? {
-        get { nil }
-        set {
-            Task { await self.setOnStateChange(newValue) }
-        }
-    }
-
-    /// 播放完成回调
-    nonisolated var onFinish: (@MainActor () -> Void)? {
-        get { nil }
-        set {
-            Task { await self.setOnFinish(newValue) }
-        }
-    }
-
-    private func setOnProgress(_ callback: (@MainActor (TimeInterval, TimeInterval) -> Void)?) {
-        _onProgress = callback
-    }
-
-    private func setOnStateChange(_ callback: (@MainActor (VideoPlaybackState) -> Void)?) {
-        _onStateChange = callback
-    }
-
-    private func setOnFinish(_ callback: (@MainActor () -> Void)?) {
-        _onFinish = callback
+    /// 一次性原子设置所有回调（须在 load 之前调用，保证不会漏掉早期状态变化）
+    func configureCallbacks(
+        onStateChange: @escaping @MainActor (VideoPlaybackState) -> Void,
+        onProgress: @escaping @MainActor (TimeInterval, TimeInterval) -> Void,
+        onFinish: @escaping @MainActor () -> Void
+    ) {
+        _onStateChange = onStateChange
+        _onProgress = onProgress
+        _onFinish = onFinish
     }
 
     // MARK: - 公共接口
@@ -164,6 +138,8 @@ actor VideoPlayerManager {
     private func handleStatusChange(_ status: AVPlayerItem.Status) {
         switch status {
         case .readyToPlay:
+            // play() 已先被调用时保持 .playing，不强制覆盖为 .paused
+            if case .playing = state { break }
             updateState(.paused)
         case .failed:
             if let error = player?.currentItem?.error {

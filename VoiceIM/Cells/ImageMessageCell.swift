@@ -127,21 +127,24 @@ final class ImageMessageCell: ChatBubbleCell {
     }
 
     private func loadImage(from url: URL) {
+        // 【关键优化】先同步检查内存缓存，命中则立即显示，避免灰色闪烁
+        // 原因：异步加载会导致短暂的灰色背景显示，影响用户体验
+        // 效果：滚动时已缓存的图片立即显示，无闪烁
+        if let cachedImage = ImageCacheManager.shared.cachedImage(for: url) {
+            applyImage(cachedImage, shouldUpdateLayout: false)
+            return
+        }
+
+        // 内存缓存未命中，显示加载指示器并异步加载
         loadingIndicator.startAnimating()
 
-        // 【性能优化】使用统一的 ImageCacheManager
-        // 优势：
-        // 1. 两级缓存（内存 + 磁盘）
-        // 2. 图片下采样（减少内存占用）
-        // 3. 异步解码（避免阻塞主线程）
-        // 4. 自动内存管理
         Task { [weak self] in
             guard let self else { return }
 
             // 计算目标尺寸（用于下采样优化）
             let targetSize = CGSize(width: 250, height: 350)
 
-            // 异步加载图片
+            // 异步加载图片（从磁盘或文件系统）
             let image = await ImageCacheManager.shared.loadImage(from: url, targetSize: targetSize)
 
             await MainActor.run {
@@ -155,25 +158,37 @@ final class ImageMessageCell: ChatBubbleCell {
                     return
                 }
 
-                self.imageView.image = image
-
-                // 根据图片尺寸更新约束，获取高度变化量
-                let heightDelta = self.updateImageSize(for: image)
-
-                // 【关键步骤】通知 CollectionView 重新计算布局
-                var view = self.superview
-                while view != nil && !(view is UICollectionView) {
-                    view = view?.superview
-                }
-                if let collectionView = view as? UICollectionView {
-                    collectionView.performBatchUpdates(nil)
-                }
-
-                // 【关键回调】通知 ViewController 图片已加载
-                if heightDelta != 0 {
-                    self.delegate?.cellDidLoadImage(self, heightDelta: heightDelta)
-                }
+                self.applyImage(image, shouldUpdateLayout: true)
             }
+        }
+    }
+
+    /// 应用图片并更新布局
+    ///
+    /// - Parameters:
+    ///   - image: 要显示的图片
+    ///   - shouldUpdateLayout: 是否需要通知 CollectionView 更新布局
+    private func applyImage(_ image: UIImage, shouldUpdateLayout: Bool) {
+        imageView.image = image
+
+        // 根据图片尺寸更新约束，获取高度变化量
+        let heightDelta = updateImageSize(for: image)
+
+        // 【关键步骤】异步加载时需要通知 CollectionView 重新计算布局
+        // 同步加载时跳过，因为可能在 cell 返回过程中
+        if shouldUpdateLayout {
+            var view = superview
+            while view != nil && !(view is UICollectionView) {
+                view = view?.superview
+            }
+            if let collectionView = view as? UICollectionView {
+                collectionView.performBatchUpdates(nil)
+            }
+        }
+
+        // 【关键回调】通知 ViewController 处理滚动策略
+        if heightDelta != 0 {
+            delegate?.cellDidLoadImage(self, heightDelta: heightDelta)
         }
     }
 
@@ -281,10 +296,10 @@ extension ImageMessageCell: MessageCellConfigurable {
         // 设置 delegate
         delegate = deps.imageDelegate
 
-        // 获取图片 URL
+        // 获取图片 URL（本地优先，路径失效时回退到磁盘缓存，最后使用远程 URL）
         let imageURL: URL?
         if case .image(let localURL, let remoteURL) = message.kind {
-            imageURL = localURL ?? remoteURL
+            imageURL = ImageCacheManager.shared.resolveImageURL(local: localURL, remote: remoteURL)
         } else {
             imageURL = nil
         }

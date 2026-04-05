@@ -531,40 +531,40 @@ extension VoiceChatViewController: ImageMessageCellDelegate {
             return
         }
 
-        guard let url = localURL ?? remoteURL else {
+        // resolveImageURL：与 Cell 显示逻辑保持一致
+        // 本地路径 → 磁盘缓存回退（重启后路径失效场景）→ 远程 URL
+        guard let resolvedURL = ImageCacheManager.shared.resolveImageURL(local: localURL, remote: remoteURL) else {
             ToastView.show("图片文件不存在", in: view)
             return
         }
 
-        // 实现全屏图片查看器
-        if let localURL = localURL, FileManager.default.fileExists(atPath: localURL.path) {
-            // 本地图片直接加载
-            if let image = UIImage(contentsOfFile: localURL.path) {
-                let previewVC = ImagePreviewViewController(image: image, imageURL: localURL)
+        if resolvedURL.isFileURL {
+            // 本地文件：预览时不限制尺寸，加载原始分辨率
+            if let image = UIImage(contentsOfFile: resolvedURL.path) {
+                let previewVC = ImagePreviewViewController(image: image, imageURL: resolvedURL)
                 previewVC.modalPresentationStyle = .fullScreen
                 present(previewVC, animated: true)
             } else {
                 ToastView.show("图片加载失败", in: view)
             }
-        } else if let remoteURL = remoteURL {
-            // 远程图片需要先下载
+        } else {
+            // 远程图片：先查内存缓存，命中直接展示；否则异步加载
+            if let cached = ImageCacheManager.shared.cachedImage(for: resolvedURL) {
+                let previewVC = ImagePreviewViewController(image: cached, imageURL: resolvedURL)
+                previewVC.modalPresentationStyle = .fullScreen
+                present(previewVC, animated: true)
+                return
+            }
+
             ToastView.show("正在加载图片...", in: view)
             Task {
-                do {
-                    let (data, _) = try await URLSession.shared.data(from: remoteURL)
-                    if let image = UIImage(data: data) {
-                        await MainActor.run {
-                            let previewVC = ImagePreviewViewController(image: image, imageURL: remoteURL)
-                            previewVC.modalPresentationStyle = .fullScreen
-                            present(previewVC, animated: true)
-                        }
+                let image = await ImageCacheManager.shared.loadImage(from: resolvedURL)
+                await MainActor.run {
+                    if let image {
+                        let previewVC = ImagePreviewViewController(image: image, imageURL: resolvedURL)
+                        previewVC.modalPresentationStyle = .fullScreen
+                        present(previewVC, animated: true)
                     } else {
-                        await MainActor.run {
-                            ToastView.show("图片格式不支持", in: view)
-                        }
-                    }
-                } catch {
-                    await MainActor.run {
                         ToastView.show("图片加载失败", in: view)
                     }
                 }
@@ -635,12 +635,14 @@ extension VoiceChatViewController: VideoMessageCellDelegate {
             return
         }
 
-        guard let url = localURL ?? remoteURL else {
+        // resolveVideoURL：与 Cell 显示逻辑保持一致
+        // 本地路径 → 视频缓存目录回退（重启后路径失效场景）→ 远程 URL
+        guard let resolvedURL = VideoCacheManager.shared.resolveVideoURL(local: localURL, remote: remoteURL) else {
             ToastView.show("视频文件不存在", in: view)
             return
         }
 
-        let previewVC = VideoPreviewViewController(videoURL: url)
+        let previewVC = VideoPreviewViewController(videoURL: resolvedURL)
         previewVC.modalPresentationStyle = .fullScreen
         present(previewVC, animated: true)
     }

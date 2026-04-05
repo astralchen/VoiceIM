@@ -97,17 +97,24 @@ final class MessageRepository {
     ///   - sender: 发送者
     /// - Returns: 创建的消息
     /// - Throws: ChatError
-    func sendImageMessage(tempURL: URL, sender: Sender = .me) throws -> ChatMessage {
+    func sendImageMessage(tempURL: URL, sender: Sender = .me) async throws -> ChatMessage {
         do {
-            // 保存图片文件到永久存储
-            let permanentURL = try fileStorage.saveImageFile(from: tempURL)
+            logger.info("📤 Sending image, temp: \(tempURL.lastPathComponent)")
 
-            // 创建消息
-            let message = ChatMessage.image(localURL: permanentURL, sentAt: Date())
-            try storage.append(message)
+            // 【关键优化】保存原图到磁盘缓存并加载缩略图到内存
+            // 原因：
+            // 1. 磁盘保存原图，支持高清预览和分享
+            // 2. 内存缓存缩略图，列表显示快速
+            // 3. 统一由 ImageCacheManager 管理
+            let cacheURL = try await ImageCacheManager.shared.saveAndCacheImage(from: tempURL)
+            logger.info("💾 Saved to cache: \(cacheURL.lastPathComponent)")
 
             // 删除临时文件
             try? fileStorage.deleteFile(at: tempURL)
+
+            // 创建消息（使用磁盘缓存路径）
+            let message = ChatMessage.image(localURL: cacheURL, sentAt: Date())
+            try storage.append(message)
 
             logger.info("Sent image message: \(message.id)")
             return message
@@ -125,17 +132,20 @@ final class MessageRepository {
     ///   - sender: 发送者
     /// - Returns: 创建的消息
     /// - Throws: ChatError
-    func sendVideoMessage(tempURL: URL, duration: TimeInterval, sender: Sender = .me) throws -> ChatMessage {
+    func sendVideoMessage(tempURL: URL, duration: TimeInterval, sender: Sender = .me) async throws -> ChatMessage {
         do {
-            // 保存视频文件到永久存储
-            let permanentURL = try fileStorage.saveVideoFile(from: tempURL)
+            logger.info("📤 Sending video, temp: \(tempURL.lastPathComponent)")
 
-            // 创建消息
-            let message = ChatMessage.video(localURL: permanentURL, duration: duration, sentAt: Date())
-            try storage.append(message)
+            // 保存到视频缓存目录 + 预生成缩略图（统一由 VideoCacheManager 管理，对应图片的 saveAndCacheImage）
+            let cacheURL = try await VideoCacheManager.shared.saveAndCacheVideo(from: tempURL)
+            logger.info("💾 Saved to cache: \(cacheURL.lastPathComponent)")
 
             // 删除临时文件
-            try? fileStorage.deleteFile(at: tempURL)
+            try? FileManager.default.removeItem(at: tempURL)
+
+            // 创建消息（使用视频缓存路径）
+            let message = ChatMessage.video(localURL: cacheURL, duration: duration, sentAt: Date())
+            try storage.append(message)
 
             logger.info("Sent video message: \(message.id), duration: \(duration)s")
             return message

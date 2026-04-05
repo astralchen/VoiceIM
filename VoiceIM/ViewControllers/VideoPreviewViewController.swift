@@ -34,10 +34,6 @@ final class VideoPreviewViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // 页面显示后自动播放视频
-        Task {
-            await playerManager.play()
-        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -108,6 +104,20 @@ final class VideoPreviewViewController: UIViewController {
 
     private func setupPlayer() {
         Task {
+            // 先原子性注册所有回调，防止 load 触发状态变化时回调还未就绪
+            await playerManager.configureCallbacks(
+                onStateChange: { [weak self] state in
+                    self?.handleStateChange(state)
+                },
+                onProgress: { [weak self] current, duration in
+                    self?.playerView.updateProgress(current: current, duration: duration)
+                },
+                onFinish: { [weak self] in
+                    self?.isPlaying = false
+                    self?.playerView.updatePlaybackState(isPlaying: false)
+                }
+            )
+
             // 加载视频
             await playerManager.load(url: videoURL)
 
@@ -116,21 +126,8 @@ final class VideoPreviewViewController: UIViewController {
                 playerView.setPlayer(player)
             }
 
-            // 设置状态变化回调
-            playerManager.onStateChange = { [weak self] state in
-                self?.handleStateChange(state)
-            }
-
-            // 设置进度回调
-            playerManager.onProgress = { [weak self] current, duration in
-                self?.playerView.updateProgress(current: current, duration: duration)
-            }
-
-            // 设置播放完成回调
-            playerManager.onFinish = { [weak self] in
-                self?.isPlaying = false
-                self?.playerView.updatePlaybackState(isPlaying: false)
-            }
+            // 回调已就绪后再自动播放，状态变化能被正确捕获
+            await playerManager.play()
         }
     }
 
@@ -207,7 +204,9 @@ final class VideoPreviewViewController: UIViewController {
     private func scheduleHideControls() {
         hideControlsTimer?.invalidate()
         hideControlsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
-            self?.hideControls()
+            Task { @MainActor [weak self] in
+                self?.hideControls()
+            }
         }
     }
 

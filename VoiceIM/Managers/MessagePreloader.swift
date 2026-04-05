@@ -136,7 +136,7 @@ final class MessagePreloader {
                let imageURL = localURL {
                 Task {
                     let targetSize = CGSize(width: 250, height: 350)
-                    await ImageCacheManager.shared.preloadImage(from: imageURL, targetSize: targetSize)
+                    ImageCacheManager.shared.preloadImage(from: imageURL, targetSize: targetSize)
                     VoiceIM.logger.debug("Preloaded image for message: \(message.id)")
                 }
             }
