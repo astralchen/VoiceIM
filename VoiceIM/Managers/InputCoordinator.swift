@@ -34,8 +34,9 @@ final class InputCoordinator {
     // MARK: - Dependencies
 
     weak var viewController: UIViewController?
-    private let recorder: VoiceRecordManager
-    private let player: VoicePlaybackManager
+    private let recorder: AudioRecordService
+    private let player: AudioPlaybackService
+    private let photoPicker: PhotoPickerService
 
     // MARK: - Recording State
 
@@ -78,10 +79,21 @@ final class InputCoordinator {
 
     // MARK: - Init
 
-    init(recorder: VoiceRecordManager = .shared,
-         player: VoicePlaybackManager = .shared) {
+    /// 初始化输入协调器
+    ///
+    /// 使用依赖注入模式，支持替换录音器、播放器和相册选择器实现。
+    /// 默认参数使用单例，保持向后兼容，生产代码无需修改。
+    ///
+    /// - Parameters:
+    ///   - recorder: 录音服务（默认使用 VoiceRecordManager.shared）
+    ///   - player: 播放服务（默认使用 VoicePlaybackManager.shared）
+    ///   - photoPicker: 相册选择服务（默认使用 PhotoPickerManager.shared）
+    init(recorder: AudioRecordService = VoiceRecordManager.shared,
+         player: AudioPlaybackService = VoicePlaybackManager.shared,
+         photoPicker: PhotoPickerService = PhotoPickerManager.shared) {
         self.recorder = recorder
         self.player = player
+        self.photoPicker = photoPicker
     }
 
     // MARK: - Setup
@@ -118,7 +130,7 @@ final class InputCoordinator {
     /// 构建扩展功能菜单
     ///
     /// 使用 UIMenu 提供以下功能：
-    /// - 相册：调用 PhotoPickerManager 选择图片/视频
+    /// - 相册：调用 PhotoPickerService 选择图片/视频
     /// - 拍照：开发中
     /// - 位置：发送模拟位置
     private func buildExtensionMenu() -> UIMenu {
@@ -140,7 +152,7 @@ final class InputCoordinator {
     /// 处理扩展功能按钮点击（保留以兼容旧代码）
     ///
     /// 显示 UIAlertController 菜单，提供以下功能：
-    /// - 相册：调用 PhotoPickerManager 选择图片/视频
+    /// - 相册：调用 PhotoPickerService 选择图片/视频
     /// - 拍照：开发中
     /// - 位置：发送模拟位置
     private func handleExtensionTap() {
@@ -165,13 +177,13 @@ final class InputCoordinator {
 
     /// 打开系统相册选择器
     ///
-    /// 使用 PhotoPickerManager 的 async/await API 选择图片或视频。
+    /// 使用 PhotoPickerService 的 async/await API 选择图片或视频。
     /// 选择完成后通过回调通知 ViewController 发送消息。
     private func openPhotoPicker() {
         guard let vc = viewController else { return }
         Task { @MainActor in
             do {
-                guard let result = try await PhotoPickerManager.shared.pickMedia(from: vc) else {
+                guard let result = try await photoPicker.pickMedia(from: vc, allowsMultiple: false) else {
                     return  // 用户取消
                 }
 

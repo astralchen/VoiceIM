@@ -18,13 +18,31 @@ final class VoiceChatViewController: UIViewController {
     private let maxHistoryPages = 3         // mock 数据最多 3 页
     private let historyRefreshControl = UIRefreshControl()
 
-    // MARK: - 管理器
+    // MARK: - 依赖注入
 
-    private let player = VoicePlaybackManager.shared
-    private lazy var messageDataSource = MessageDataSource(collectionView: collectionView)
-    private lazy var actionHandler = MessageActionHandler(player: player)
-    private lazy var inputCoordinator = InputCoordinator()
+    private var player: AudioPlaybackService
+    private var messageDataSource: MessageDataSourceProtocol!
+    private var actionHandler: MessageActionHandler!
+    private var inputCoordinator: InputCoordinator!
     private var keyboardManager: KeyboardManager!
+
+    // MARK: - 初始化
+
+    /// 初始化聊天视图控制器
+    ///
+    /// 使用依赖注入模式，支持替换所有服务实现。
+    /// 默认参数使用单例，保持向后兼容。
+    ///
+    /// - Parameters:
+    ///   - player: 播放服务
+    init(player: AudioPlaybackService = VoicePlaybackManager.shared) {
+        self.player = player
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     // MARK: - 生命周期
 
@@ -32,7 +50,13 @@ final class VoiceChatViewController: UIViewController {
         super.viewDidLoad()
         title = "消息"
         view.backgroundColor = .systemBackground
+
+        // 初始化依赖组件
         setupCollectionView()
+        messageDataSource = MessageDataSource(collectionView: collectionView)
+        actionHandler = MessageActionHandler(player: player)
+        inputCoordinator = InputCoordinator()
+
         setupInputView()
         setupManagers()
         setupPlaybackCallbacks()
@@ -85,39 +109,6 @@ final class VoiceChatViewController: UIViewController {
         let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tap.cancelsTouchesInView = false  // 不阻止 cell 点击事件
         collectionView.addGestureRecognizer(tap)
-
-        // 配置 MessageDataSource 的依赖注入
-        messageDataSource.dependencies = MessageCellDependencies(
-            isPlaying: player.isPlaying(id:),
-            currentProgress: player.currentProgress(for:),
-            voiceDelegate: self,
-            imageDelegate: self,
-            videoDelegate: self,
-            locationDelegate: self,
-            onLinkTapped: { [weak self] url, type in
-                self?.handleLinkTapped(url: url, type: type)
-            })
-
-        // 配置 Cell 回调（重试按钮、上下文菜单、撤回消息点击）
-        messageDataSource.cellConfigurator = { [weak self] cell, message in
-            guard let self else { return }
-
-            // 通过协议统一设置交互回调
-            if let interactiveCell = cell as? MessageCellInteractive {
-                interactiveCell.setRetryHandler { [weak self] in
-                    self?.actionHandler.retryMessage(message.id)
-                }
-                interactiveCell.setContextMenuProvider { [weak self] msg in
-                    self?.actionHandler.buildContextMenu(for: msg)
-                }
-            }
-
-            if let recalledCell = cell as? RecalledMessageCellInteractive {
-                recalledCell.setTapHandler { [weak self] in
-                    self?.actionHandler.handleRecalledMessageTap(message)
-                }
-            }
-        }
 
         // 下拉加载历史
         historyRefreshControl.addTarget(self,
@@ -175,6 +166,39 @@ final class VoiceChatViewController: UIViewController {
     }
 
     private func setupManagers() {
+        // 配置 MessageDataSource 的依赖注入
+        messageDataSource.dependencies = MessageCellDependencies(
+            isPlaying: player.isPlaying(id:),
+            currentProgress: player.currentProgress(for:),
+            voiceDelegate: self,
+            imageDelegate: self,
+            videoDelegate: self,
+            locationDelegate: self,
+            onLinkTapped: { [weak self] url, type in
+                self?.handleLinkTapped(url: url, type: type)
+            })
+
+        // 配置 Cell 回调（重试按钮、上下文菜单、撤回消息点击）
+        messageDataSource.cellConfigurator = { [weak self] cell, message in
+            guard let self else { return }
+
+            // 通过协议统一设置交互回调
+            if let interactiveCell = cell as? MessageCellInteractive {
+                interactiveCell.setRetryHandler { [weak self] in
+                    self?.actionHandler.retryMessage(message.id)
+                }
+                interactiveCell.setContextMenuProvider { [weak self] msg in
+                    self?.actionHandler.buildContextMenu(for: msg)
+                }
+            }
+
+            if let recalledCell = cell as? RecalledMessageCellInteractive {
+                recalledCell.setTapHandler { [weak self] in
+                    self?.actionHandler.handleRecalledMessageTap(message)
+                }
+            }
+        }
+
         // 配置 ActionHandler
         actionHandler.viewController = self
         actionHandler.onDelete = { [weak self] id in
@@ -411,7 +435,10 @@ final class VoiceChatViewController: UIViewController {
 
     private func resolveURL(for message: ChatMessage) async throws -> URL {
         if let local = message.localURL   { return local }
-        if let remote = message.remoteURL { return try await VoiceCacheManager.shared.resolve(remote) }
+        if let remote = message.remoteURL {
+            // VoiceCacheManager 是 actor，可以安全地跨并发域调用
+            return try await VoiceCacheManager.shared.resolve(remote)
+        }
         throw URLError(.fileDoesNotExist)
     }
 

@@ -1,7 +1,7 @@
 import Foundation
 
 /// 语音文件下载缓存管理器（Actor 保证线程安全）
-actor VoiceCacheManager {
+actor VoiceCacheManager: FileCacheService {
 
     static let shared = VoiceCacheManager()
 

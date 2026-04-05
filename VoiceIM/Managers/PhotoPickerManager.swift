@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 /// 相册选择器管理器，提供 async/await 风格的 API
 @MainActor
-final class PhotoPickerManager: NSObject {
+final class PhotoPickerManager: NSObject, PhotoPickerService {
 
     // MARK: - 单例
 
@@ -27,21 +27,14 @@ final class PhotoPickerManager: NSObject {
         case unsupportedType
     }
 
-    // MARK: - 选择结果类型
-
-    enum PickerResult: Sendable {
-        case image(URL)
-        case video(URL, duration: TimeInterval)
-    }
-
     // MARK: - 公开 API
 
     /// 选择图片或视频（返回本地临时文件 URL）
     /// - Parameters:
-    ///   - from: 展示选择器的 ViewController
+    ///   - viewController: 展示选择器的 ViewController
     ///   - allowsMultiple: 是否允许多选（默认单选）
     /// - Returns: 选择的资源，用户取消时返回 nil
-    func pickMedia(from viewController: UIViewController, allowsMultiple: Bool = false) async throws -> PickerResult? {
+    func pickMedia(from viewController: UIViewController, allowsMultiple: Bool = false) async throws -> PhotoPickerResult? {
         guard let itemProvider = try await presentPicker(
             from: viewController,
             filter: .any(of: [.images, .videos]),
@@ -115,7 +108,7 @@ final class PhotoPickerManager: NSObject {
     }
 
     /// 加载图片或视频（自动判断类型）
-    private func loadMedia(from itemProvider: NSItemProvider) async throws -> PickerResult {
+    private func loadMedia(from itemProvider: NSItemProvider) async throws -> PhotoPickerResult {
         if itemProvider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
             let url = try await loadImage(from: itemProvider)
             return .image(url)

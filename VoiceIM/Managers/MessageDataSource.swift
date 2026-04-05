@@ -19,7 +19,7 @@ import UIKit
 ///   升级到 iOS 15 后可改用 reconfigureItems + insertItems/deleteItems，
 ///   届时可将新 item 写入 snapshot，messages 数组可移除。
 @MainActor
-final class MessageDataSource {
+final class MessageDataSource: MessageDataSourceProtocol {
 
     // MARK: - Section
 
