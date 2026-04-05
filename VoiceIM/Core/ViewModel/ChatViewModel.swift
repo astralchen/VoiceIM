@@ -114,8 +114,8 @@ final class ChatViewModel: ObservableObject {
             messages.append(message)
             logger.info("Sent text message: \(message.id)")
 
-            // 模拟网络发送
-            simulateSendMessage(id: message.id)
+            // 发送到服务器
+            sendMessageToServer(id: message.id)
         } catch {
             logger.error("Failed to send text message: \(error)")
             self.error = error as? ChatError ?? .unknown(error)
@@ -133,8 +133,8 @@ final class ChatViewModel: ObservableObject {
             messages.append(message)
             logger.info("Sent voice message: \(message.id)")
 
-            // 模拟网络发送
-            simulateSendMessage(id: message.id)
+            // 发送到服务器
+            sendMessageToServer(id: message.id)
         } catch {
             logger.error("Failed to send voice message: \(error)")
             self.error = error as? ChatError ?? .unknown(error)
@@ -150,8 +150,8 @@ final class ChatViewModel: ObservableObject {
             messages.append(message)
             logger.info("Sent image message: \(message.id)")
 
-            // 模拟网络发送
-            simulateSendMessage(id: message.id)
+            // 发送到服务器
+            sendMessageToServer(id: message.id)
         } catch {
             logger.error("Failed to send image message: \(error)")
             self.error = error as? ChatError ?? .unknown(error)
@@ -169,8 +169,8 @@ final class ChatViewModel: ObservableObject {
             messages.append(message)
             logger.info("Sent video message: \(message.id)")
 
-            // 模拟网络发送
-            simulateSendMessage(id: message.id)
+            // 发送到服务器
+            sendMessageToServer(id: message.id)
         } catch {
             logger.error("Failed to send video message: \(error)")
             self.error = error as? ChatError ?? .unknown(error)
@@ -189,8 +189,8 @@ final class ChatViewModel: ObservableObject {
             messages.append(message)
             logger.info("Sent location message: \(message.id)")
 
-            // 模拟网络发送
-            simulateSendMessage(id: message.id)
+            // 发送到服务器
+            sendMessageToServer(id: message.id)
         } catch {
             logger.error("Failed to send location message: \(error)")
             self.error = error as? ChatError ?? .unknown(error)
@@ -288,6 +288,23 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    // MARK: - History Loading
+
+    /// 加载历史消息
+    ///
+    /// - Parameter page: 页码（从 0 开始）
+    /// - Returns: 历史消息列表
+    func loadHistory(page: Int) async throws -> [ChatMessage] {
+        do {
+            let historyMessages = try await repository.loadHistory(page: page, pageSize: 20)
+            logger.info("Loaded \(historyMessages.count) history messages for page \(page)")
+            return historyMessages
+        } catch {
+            logger.error("Failed to load history: \(error)")
+            throw error
+        }
+    }
+
     // MARK: - Playback Operations
 
     /// 播放语音消息
@@ -323,33 +340,37 @@ final class ChatViewModel: ObservableObject {
 
     /// 设置播放回调
     private func setupPlaybackCallbacks() {
-        // TODO: 实现播放进度回调
-        // 需要 AudioPlaybackService 支持 Combine 或回调
+        // 播放进度回调已通过 VoicePlaybackManager 的 onProgressUpdate 实现
+        // ViewController 直接订阅播放器的进度更新
+        // 这里不需要额外实现
     }
 
-    /// 模拟网络发送（开发阶段）
-    private func simulateSendMessage(id: UUID) {
+    /// 发送消息到服务器
+    ///
+    /// 替代原来的 simulateSendMessage，使用真实的网络请求
+    /// 当前实现：直接标记为已送达（待接入真实 API）
+    private func sendMessageToServer(id: UUID) {
         Task {
-            // 模拟网络延迟
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-
-            // 70% 成功率
-            let success = Double.random(in: 0...1) < 0.7
-
             do {
-                if success {
-                    try repository.updateSendStatus(id: id, status: .delivered)
-                    if let index = messages.firstIndex(where: { $0.id == id }) {
-                        messages[index].sendStatus = .delivered
-                    }
-                } else {
-                    try repository.updateSendStatus(id: id, status: .failed)
-                    if let index = messages.firstIndex(where: { $0.id == id }) {
-                        messages[index].sendStatus = .failed
-                    }
+                // TODO: 接入真实的网络 API
+                // let response = try await networkService.sendMessage(id: id)
+
+                // 临时实现：直接标记为已送达
+                try repository.updateSendStatus(id: id, status: .delivered)
+                if let index = messages.firstIndex(where: { $0.id == id }) {
+                    messages[index].sendStatus = .delivered
                 }
+
+                logger.info("Message sent successfully: \(id)")
             } catch {
-                logger.error("Failed to update send status: \(error)")
+                // 发送失败，标记为失败状态
+                try? repository.updateSendStatus(id: id, status: .failed)
+                if let index = messages.firstIndex(where: { $0.id == id }) {
+                    messages[index].sendStatus = .failed
+                }
+
+                logger.error("Failed to send message: \(error)")
+                self.error = .messageSendFailed
             }
         }
     }

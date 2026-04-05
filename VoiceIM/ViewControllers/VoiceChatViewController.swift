@@ -405,12 +405,31 @@ final class VoiceChatViewController: UIViewController {
         isLoadingHistory = true
         historyPage += 1
 
-        // 模拟网络延迟
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        // 从 ViewModel 加载历史消息
+        Task { [weak self] in
             guard let self else { return }
-            // TODO: 从 ViewModel 加载历史消息
-            self.historyRefreshControl.endRefreshing()
-            self.isLoadingHistory = false
+
+            do {
+                let historyMessages = try await self.viewModel.loadHistory(page: self.historyPage)
+
+                await MainActor.run {
+                    // 将历史消息插入到列表头部
+                    if !historyMessages.isEmpty {
+                        self.messageDataSource.prependMessages(historyMessages)
+                        VoiceIM.logger.info("Prepended \(historyMessages.count) history messages")
+                    }
+
+                    self.historyRefreshControl.endRefreshing()
+                    self.isLoadingHistory = false
+                }
+            } catch {
+                await MainActor.run {
+                    VoiceIM.logger.error("Failed to load history: \(error)")
+                    ToastView.show("加载历史消息失败", in: self.view)
+                    self.historyRefreshControl.endRefreshing()
+                    self.isLoadingHistory = false
+                }
+            }
         }
     }
 
@@ -513,8 +532,40 @@ extension VoiceChatViewController: ImageMessageCellDelegate {
             return
         }
 
-        // TODO: 实现全屏图片查看器
-        VoiceIM.logger.info("Image tapped: \(url)")
+        // 实现全屏图片查看器
+        if let localURL = localURL, FileManager.default.fileExists(atPath: localURL.path) {
+            // 本地图片直接加载
+            if let image = UIImage(contentsOfFile: localURL.path) {
+                let previewVC = ImagePreviewViewController(image: image, imageURL: localURL)
+                previewVC.modalPresentationStyle = .fullScreen
+                present(previewVC, animated: true)
+            } else {
+                ToastView.show("图片加载失败", in: view)
+            }
+        } else if let remoteURL = remoteURL {
+            // 远程图片需要先下载
+            ToastView.show("正在加载图片...", in: view)
+            Task {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: remoteURL)
+                    if let image = UIImage(data: data) {
+                        await MainActor.run {
+                            let previewVC = ImagePreviewViewController(image: image, imageURL: remoteURL)
+                            previewVC.modalPresentationStyle = .fullScreen
+                            present(previewVC, animated: true)
+                        }
+                    } else {
+                        await MainActor.run {
+                            ToastView.show("图片格式不支持", in: view)
+                        }
+                    }
+                } catch {
+                    await MainActor.run {
+                        ToastView.show("图片加载失败", in: view)
+                    }
+                }
+            }
+        }
     }
 
     func cellDidLoadImage(_ cell: ImageMessageCell, heightDelta: CGFloat) {

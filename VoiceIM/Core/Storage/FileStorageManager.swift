@@ -58,6 +58,19 @@ final class FileStorageManager {
         try? fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
     }
 
+    /// 测试用初始化方法（使用临时目录）
+    init(testMode: Bool) {
+        if testMode {
+            self.baseDirectory = fileManager.temporaryDirectory
+                .appendingPathComponent("VoiceIMTests-\(UUID().uuidString)", isDirectory: true)
+        } else {
+            self.baseDirectory = fileManager
+                .urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("VoiceIM", isDirectory: true)
+        }
+        try? fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+    }
+
     // MARK: - File Operations
 
     /// 保存录音文件

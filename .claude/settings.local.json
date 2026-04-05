@@ -14,7 +14,17 @@
       "Bash(mv RecordingOverlayView.swift Views/)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(grep:*)",
+      "Bash(find . -name \"*.swift\" -type f -exec grep -l \"CollectionView\\\\|UICollectionView\" {} \\\\;)",
+      "WebSearch",
+      "Bash(python3:*)",
+      "Bash(find /Users/chenchen/Documents/GitHub/VoiceIM/VoiceIM -name \"*.swift\" -exec wc -l {} +)",
+      "Bash(wc -l VoiceIM/Core/**/*.swift)",
+      "Bash(find:*)",
+      "Bash(git checkout:*)",
+      "Bash(wc -l /Users/chenchen/Documents/GitHub/VoiceIM/VoiceIM/**/*.swift)",
+      "Read(//tmp/**)"
     ]
   }
 }

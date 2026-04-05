@@ -308,4 +308,59 @@ final class MessageRepository {
             return 0
         }
     }
+
+    // MARK: - History Loading
+
+    /// 加载历史消息（分页）
+    ///
+    /// - Parameters:
+    ///   - page: 页码（从 0 开始）
+    ///   - pageSize: 每页消息数量
+    /// - Returns: 历史消息列表（按时间倒序）
+    /// - Throws: ChatError
+    func loadHistory(page: Int, pageSize: Int = 20) async throws -> [ChatMessage] {
+        // TODO: 接入真实的网络 API
+        // 当前实现：生成模拟历史消息
+
+        // 模拟网络延迟
+        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 秒
+
+        // 生成模拟历史消息
+        let startIndex = page * pageSize
+        let endIndex = startIndex + pageSize
+
+        var historyMessages: [ChatMessage] = []
+
+        for i in startIndex..<endIndex {
+            let timestamp = Date().addingTimeInterval(-Double((i + 1) * 3600)) // 每条消息间隔 1 小时
+
+            // 交替生成不同类型的消息
+            let message: ChatMessage
+            switch i % 3 {
+            case 0:
+                message = ChatMessage.text(
+                    "历史消息 #\(i + 1)",
+                    sender: i % 2 == 0 ? .me : .peer,
+                    sentAt: timestamp
+                )
+            case 1:
+                message = ChatMessage.text(
+                    "这是一条较长的历史消息，用于测试消息列表的显示效果 #\(i + 1)",
+                    sender: i % 2 == 0 ? .me : .peer,
+                    sentAt: timestamp
+                )
+            default:
+                message = ChatMessage.text(
+                    "历史消息内容 #\(i + 1)",
+                    sender: i % 2 == 0 ? .me : .peer,
+                    sentAt: timestamp
+                )
+            }
+
+            historyMessages.append(message)
+        }
+
+        logger.info("Loaded \(historyMessages.count) history messages for page \(page)")
+        return historyMessages
+    }
 }

@@ -4,14 +4,23 @@ import UIKit
 @MainActor
 final class ImagePreviewViewController: UIViewController {
 
-    private let imageURL: URL
+    private let imageURL: URL?
+    private let image: UIImage?
     private let scrollView = UIScrollView()
     private let imageView = UIImageView()
     private let closeButton = UIButton(type: .system)
 
     // MARK: - 初始化
 
+    init(image: UIImage, imageURL: URL) {
+        self.image = image
+        self.imageURL = imageURL
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .fullScreen
+    }
+
     init(imageURL: URL) {
+        self.image = nil
         self.imageURL = imageURL
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
@@ -82,9 +91,18 @@ final class ImagePreviewViewController: UIViewController {
     // MARK: - 加载图片
 
     private func loadImage() {
+        // 如果已经有图片，直接显示
+        if let image = image {
+            imageView.image = image
+            return
+        }
+
+        // 否则从 URL 加载
+        guard let imageURL = imageURL else { return }
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self,
-                  let data = try? Data(contentsOf: self.imageURL),
+                  let data = try? Data(contentsOf: imageURL),
                   let image = UIImage(data: data) else { return }
 
             DispatchQueue.main.async {

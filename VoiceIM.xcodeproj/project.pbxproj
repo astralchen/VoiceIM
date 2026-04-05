@@ -12,7 +12,6 @@
 		23B1E6E0CBE79986E9FECD1D /* ChatError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BACD30F535B667AE19DED0 /* ChatError.swift */; };
 		24BF94103557B449A3C24E9A /* Sender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B116B70AF463441C99E8D91 /* Sender.swift */; };
 		28EAD5D969A12EA148C6FF2C /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3013B60CE7DBA4F5D4F00B26 /* Logger.swift */; };
-		2DCACB1D33DC69650F4B0586 /* VoiceIMTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D209493AA4379B41EC5CCACD /* VoiceIMTests.swift */; };
 		409B209AD52A4EDCD0A27FE1 /* ChatInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C1A232CA48A0E6F22AA66D /* ChatInputView.swift */; };
 		46522896B13ECD134635D330 /* ChatBubbleCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580F9DF67CE812B7B1D9174E /* ChatBubbleCell.swift */; };
 		46FE214E286FE9D95C161938 /* KeyboardManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B9BFF8C228B2592BC3E1BE /* KeyboardManager.swift */; };
@@ -103,7 +102,6 @@
 		C44994233323BB3EE477F0BF /* WaveformProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformProgressView.swift; sourceTree = "<group>"; };
 		C7D8C599087F2B9B609ACAED /* VoiceIMTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VoiceIMTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C965731AD4227230ADCB2E2C /* VoiceIM.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VoiceIM.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		D209493AA4379B41EC5CCACD /* VoiceIMTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceIMTests.swift; sourceTree = "<group>"; };
 		D3B9BFF8C228B2592BC3E1BE /* KeyboardManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardManager.swift; sourceTree = "<group>"; };
 		D8752F520CC3796FAD778D37 /* ImagePreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewViewController.swift; sourceTree = "<group>"; };
 		D977382F54C6E581B9DA915C /* PhotoPickerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPickerManager.swift; sourceTree = "<group>"; };
@@ -206,7 +204,6 @@
 				ADC2F580813F7AD4C6A8CE09 /* FileStorageManagerTests.swift */,
 				102220184BADC48F3B5937D4 /* LoggerTests.swift */,
 				77F937545ECF81A8B8130DDF /* MessageRepositoryTests.swift */,
-				D209493AA4379B41EC5CCACD /* VoiceIMTests.swift */,
 			);
 			path = VoiceIMTests;
 			sourceTree = "<group>";
@@ -424,7 +421,6 @@
 				84FB71B09DF3A83ACC882D7E /* FileStorageManagerTests.swift in Sources */,
 				91A3D9426B7D8692B3FD2572 /* LoggerTests.swift in Sources */,
 				EB052985D76F52CE24FE7316 /* MessageRepositoryTests.swift in Sources */,
-				2DCACB1D33DC69650F4B0586 /* VoiceIMTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -492,6 +488,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -567,6 +564,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
