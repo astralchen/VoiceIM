@@ -129,6 +129,6 @@ struct LocationMessageCellViewModel: MessageCellViewModel {
 
 /// 播放状态查询接口
 struct PlaybackState {
-    let isPlaying: (UUID) -> Bool
-    let currentProgress: (UUID) -> Float
+    let isPlaying: (String) -> Bool
+    let currentProgress: (String) -> Float
 }

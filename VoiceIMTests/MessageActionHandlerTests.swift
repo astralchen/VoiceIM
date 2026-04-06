@@ -11,14 +11,14 @@ struct MessageActionHandlerTests {
 
     /// Mock 播放服务
     final class MockPlaybackService: AudioPlaybackService {
-        var playingID: UUID?
-        var onStart: ((UUID) -> Void)?
-        var onProgress: ((UUID, Float) -> Void)?
-        var onStop: ((UUID) -> Void)?
+        var playingID: String?
+        var onStart: ((String) -> Void)?
+        var onProgress: ((String, Float) -> Void)?
+        var onStop: ((String) -> Void)?
 
         var stopCurrentCalled = false
 
-        func play(id: UUID, url: URL) throws {
+        func play(id: String, url: URL) throws {
             playingID = id
         }
 
@@ -30,17 +30,17 @@ struct MessageActionHandlerTests {
             }
         }
 
-        func isPlaying(id: UUID) -> Bool {
+        func isPlaying(id: String) -> Bool {
             playingID == id
         }
 
-        func currentProgress(for id: UUID) -> Float {
+        func currentProgress(for id: String) -> Float {
             0.5
         }
 
-        func playbackDuration(for id: UUID) -> TimeInterval { 0 }
+        func playbackDuration(for id: String) -> TimeInterval { 0 }
 
-        func playbackRemaining(for id: UUID) -> TimeInterval { 0 }
+        func playbackRemaining(for id: String) -> TimeInterval { 0 }
 
         func seek(to progress: Float) {}
     }
@@ -53,10 +53,12 @@ struct MessageActionHandlerTests {
         let handler = MessageActionHandler(player: player)
 
         let message = ChatMessage(
-            id: UUID(),
+            id: MessageIDGenerator.next(),
             kind: .text("测试消息"),
-            isOutgoing: true,
+            sender: .me,
             sentAt: Date(),
+            isPlayed: true,
+            isRead: true,
             sendStatus: .delivered
         )
 
@@ -73,10 +75,12 @@ struct MessageActionHandlerTests {
 
         let voiceURL = URL(fileURLWithPath: "/tmp/test.m4a")
         let message = ChatMessage(
-            id: UUID(),
-            kind: .voice(voiceURL, duration: 5.0),
-            isOutgoing: true,
+            id: MessageIDGenerator.next(),
+            kind: .voice(localURL: voiceURL, remoteURL: nil, duration: 5.0),
+            sender: .me,
             sentAt: Date(),
+            isPlayed: true,
+            isRead: true,
             sendStatus: .delivered
         )
 
@@ -94,10 +98,12 @@ struct MessageActionHandlerTests {
         // 创建 4 分钟前的消息
         let oldDate = Date().addingTimeInterval(-4 * 60)
         let message = ChatMessage(
-            id: UUID(),
+            id: MessageIDGenerator.next(),
             kind: .text("旧消息"),
-            isOutgoing: true,
+            sender: .me,
             sentAt: oldDate,
+            isPlayed: true,
+            isRead: true,
             sendStatus: .delivered
         )
 
@@ -113,10 +119,12 @@ struct MessageActionHandlerTests {
         let handler = MessageActionHandler(player: player)
 
         let message = ChatMessage(
-            id: UUID(),
+            id: MessageIDGenerator.next(),
             kind: .text("发送中的消息"),
-            isOutgoing: true,
+            sender: .me,
             sentAt: Date(),
+            isPlayed: true,
+            isRead: true,
             sendStatus: .sending
         )
 
@@ -132,10 +140,12 @@ struct MessageActionHandlerTests {
         let handler = MessageActionHandler(player: player)
 
         let message = ChatMessage(
-            id: UUID(),
+            id: MessageIDGenerator.next(),
             kind: .text("接收的消息"),
-            isOutgoing: false,
+            sender: .peer,
             sentAt: Date(),
+            isPlayed: true,
+            isRead: true,
             sendStatus: .delivered
         )
 
@@ -152,7 +162,7 @@ struct MessageActionHandlerTests {
         let player = MockPlaybackService()
         let handler = MessageActionHandler(player: player)
 
-        let messageID = UUID()
+        let messageID = MessageIDGenerator.next()
         let voiceURL = URL(fileURLWithPath: "/tmp/test.m4a")
 
         // 模拟正在播放
@@ -178,7 +188,7 @@ struct MessageActionHandlerTests {
         let player = MockPlaybackService()
         let handler = MessageActionHandler(player: player)
 
-        let messageID = UUID()
+        let messageID = MessageIDGenerator.next()
 
         // 模拟正在播放
         player.playingID = messageID
@@ -203,7 +213,7 @@ struct MessageActionHandlerTests {
         let player = MockPlaybackService()
         let handler = MessageActionHandler(player: player)
 
-        let messageID = UUID()
+        let messageID = MessageIDGenerator.next()
 
         var retryCalled = false
         handler.onRetry = { id in
@@ -224,10 +234,12 @@ struct MessageActionHandlerTests {
         let handler = MessageActionHandler(player: player)
 
         let message = ChatMessage(
-            id: UUID(),
+            id: MessageIDGenerator.next(),
             kind: .recalled(originalText: "原始文本"),
-            isOutgoing: true,
+            sender: .me,
             sentAt: Date(),
+            isPlayed: true,
+            isRead: true,
             sendStatus: .delivered
         )
 

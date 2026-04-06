@@ -31,7 +31,7 @@ final class MessageDataSource: MessageDataSourceProtocol {
     private var dataSource: UICollectionViewDiffableDataSource<Section, ChatMessage>!
 
     /// 刷新指定消息的 Cell（用于播放状态变化）
-    func reloadMessage(id: UUID) {
+    func reloadMessage(id: String) {
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
         let message = messages[idx]
         var snapshot = dataSource.snapshot()
@@ -172,7 +172,7 @@ final class MessageDataSource: MessageDataSourceProtocol {
     ///
     /// - Parameter id: 消息 ID
     /// - Returns: 被删除的消息（用于清理本地文件），若消息不存在则返回 nil
-    func deleteMessage(id: UUID) -> ChatMessage? {
+    func deleteMessage(id: String) -> ChatMessage? {
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return nil }
         let message = messages[idx]
         messages.remove(at: idx)
@@ -192,14 +192,20 @@ final class MessageDataSource: MessageDataSourceProtocol {
     /// - Parameters:
     ///   - id: 原消息 ID
     ///   - newMessage: 新消息（通常是 .recalled 类型）
-    func replaceMessage(id: UUID, with newMessage: ChatMessage) {
+    func replaceMessage(id: String, with newMessage: ChatMessage) {
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
         let oldMessage = messages[idx]
         messages[idx] = newMessage
 
         var snapshot = dataSource.snapshot()
-        snapshot.insertItems([newMessage], afterItem: oldMessage)
-        snapshot.deleteItems([oldMessage])
+        if oldMessage.id == newMessage.id {
+            // 同一业务主键仅更新内容时，必须走 reloadItems；
+            // 直接 insert/delete 会被 Diffable 判定为同一标识冲突并崩溃。
+            snapshot.reloadItems([oldMessage])
+        } else {
+            snapshot.insertItems([newMessage], afterItem: oldMessage)
+            snapshot.deleteItems([oldMessage])
+        }
         dataSource.apply(snapshot, animatingDifferences: true)
     }
 
@@ -234,7 +240,7 @@ final class MessageDataSource: MessageDataSourceProtocol {
     /// dataSource.apply(snapshot, animatingDifferences: false)
     /// ```
     /// 届时 messages 数组可移除。
-    func markAsPlayed(id: UUID) {
+    func markAsPlayed(id: String) {
         guard let idx = messages.firstIndex(where: { $0.id == id }),
               !messages[idx].isPlayed else { return }
         messages[idx].isPlayed = true
@@ -251,7 +257,7 @@ final class MessageDataSource: MessageDataSourceProtocol {
     /// - Parameters:
     ///   - id: 消息 ID
     ///   - status: 新的发送状态
-    func updateSendStatus(id: UUID, status: ChatMessage.SendStatus) {
+    func updateSendStatus(id: String, status: ChatMessage.SendStatus) {
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
         messages[idx].sendStatus = status
 
@@ -261,7 +267,7 @@ final class MessageDataSource: MessageDataSourceProtocol {
     }
 
     /// 查找消息索引
-    func index(of id: UUID) -> Int? {
+    func index(of id: String) -> Int? {
         messages.firstIndex(where: { $0.id == id })
     }
 

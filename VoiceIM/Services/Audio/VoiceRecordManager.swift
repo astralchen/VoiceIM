@@ -98,6 +98,7 @@ final class VoiceRecordManager: NSObject, AudioRecordService {
         rec.stop()
         recorder = nil
         isRecording = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         return url
     }
 
@@ -110,6 +111,7 @@ final class VoiceRecordManager: NSObject, AudioRecordService {
         try? FileManager.default.removeItem(at: url)
         recorder = nil
         isRecording = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 }
 

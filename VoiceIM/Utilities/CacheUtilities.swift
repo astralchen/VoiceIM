@@ -304,4 +304,33 @@ enum DiskCacheUtilities {
             return deletedCount
         }.value
     }
+
+    /// 按最后访问时间排序，淘汰最旧文件直到总大小低于阈值
+    static func evictIfNeeded(directory: URL, maxSizeBytes: UInt64 = 500 * 1024 * 1024) async {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentAccessDateKey, .fileSizeKey]) else { return }
+
+        var totalSize: UInt64 = 0
+        var fileInfos: [(url: URL, accessDate: Date, size: UInt64)] = []
+
+        for file in files {
+            guard let values = try? file.resourceValues(forKeys: [.contentAccessDateKey, .fileSizeKey]),
+                  let size = values.fileSize,
+                  let accessDate = values.contentAccessDate else { continue }
+            let s = UInt64(size)
+            totalSize += s
+            fileInfos.append((url: file, accessDate: accessDate, size: s))
+        }
+
+        guard totalSize > maxSizeBytes else { return }
+
+        // 按最后访问时间升序（最旧在前）
+        fileInfos.sort { $0.accessDate < $1.accessDate }
+
+        for info in fileInfos {
+            guard totalSize > maxSizeBytes else { break }
+            try? fm.removeItem(at: info.url)
+            totalSize -= info.size
+        }
+    }
 }

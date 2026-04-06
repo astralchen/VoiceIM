@@ -15,6 +15,10 @@ settings:
     TARGETED_DEVICE_FAMILY: "1"
     ENABLE_STRICT_OBJC_MSGSEND: YES
 
+packages:
+  GRDB:
+    path: Vendor/GRDB.swift
+
 targets:
   VoiceIM:
     type: application
@@ -48,6 +52,10 @@ targets:
         INFOPLIST_FILE: VoiceIM/Info.plist
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SQLITE_HAS_CODEC"
+    dependencies:
+      - package: GRDB
+        product: GRDB
 
   VoiceIMTests:
     type: bundle.unit-test

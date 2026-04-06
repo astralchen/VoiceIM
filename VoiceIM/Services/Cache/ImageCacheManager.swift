@@ -5,11 +5,13 @@ import UIKit
 enum ImageCacheError: LocalizedError {
     case loadFailed
     case encodingFailed
+    case diskCacheUnavailable
 
     var errorDescription: String? {
         switch self {
         case .loadFailed:    return "无法读取图片文件"
         case .encodingFailed: return "图片编码失败"
+        case .diskCacheUnavailable: return "磁盘缓存不可用"
         }
     }
 }
@@ -57,8 +59,8 @@ final class ImageCacheManager {
     /// 临时内存缓存（选图/处理期间）
     private nonisolated(unsafe) let tempMemoryCache = NSCache<NSString, UIImage>()
 
-    /// 永久磁盘缓存目录（初始化后不变；`URL` 为 `Sendable`，`nonisolated` 方法可直接读取）
-    private let diskCacheURL: URL
+    /// 永久磁盘缓存目录；创建失败时为 `nil`，仅使用内存缓存
+    private let diskCacheURL: URL?
 
     /// 并发加载去重（同一 URL 共用一个任务）
     private let loadDedup = ImageLoadDedupActor()
@@ -75,10 +77,12 @@ final class ImageCacheManager {
         tempMemoryCache.countLimit = 10
         tempMemoryCache.totalCostLimit = 20 * 1024 * 1024  // 20 MB
 
-        guard let diskURL = try? ChatCacheBucket.image.ensureDirectory() else {
-            fatalError("无法创建图片缓存目录")
+        if let diskURL = try? ChatCacheBucket.image.ensureDirectory() {
+            diskCacheURL = diskURL
+        } else {
+            diskCacheURL = nil
+            VoiceIM.logger.error("无法创建图片缓存目录，已降级为仅内存缓存")
         }
-        diskCacheURL = diskURL
 
         memoryWarningObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
@@ -121,9 +125,11 @@ final class ImageCacheManager {
                 return localURL
             }
             // 路径失效（如模拟器重启），按 StableHash.fileName 在磁盘缓存中查找
-            let cached = diskCacheURL.appendingPathComponent(StableHash.fileName(for: localURL, defaultExtension: "jpg"))
-            if FileManager.default.fileExists(atPath: cached.path) {
-                return cached
+            if let diskBase = diskCacheURL {
+                let cached = diskBase.appendingPathComponent(StableHash.fileName(for: localURL, defaultExtension: "jpg"))
+                if FileManager.default.fileExists(atPath: cached.path) {
+                    return cached
+                }
             }
         }
         return remoteURL
@@ -145,11 +151,17 @@ final class ImageCacheManager {
         }
 
         // 2. 磁盘缓存：本地文件直接读，远程 URL 查缓存目录
-        let diskPath = url.isFileURL
-            ? url.standardized.path
-            : diskCacheURL.appendingPathComponent(stableDiskFileName(for: url)).path
+        let diskPath: String?
+        if url.isFileURL {
+            diskPath = url.standardized.path
+        } else if let diskBase = diskCacheURL {
+            diskPath = diskBase.appendingPathComponent(stableDiskFileName(for: url)).path
+        } else {
+            diskPath = nil
+        }
 
-        guard FileManager.default.fileExists(atPath: diskPath),
+        guard let diskPath,
+              FileManager.default.fileExists(atPath: diskPath),
               let image = UIImage(contentsOfFile: diskPath) else {
             return nil
         }
@@ -195,8 +207,12 @@ final class ImageCacheManager {
     /// - Parameter tempURL: 临时文件 URL（PHPicker 返回的路径或 Photos 导出路径）
     /// - Returns: 磁盘缓存中的永久路径（存储到 ChatMessage.kind 里）
     func saveAndCacheImage(from tempURL: URL) async throws -> URL {
+        guard let diskBase = diskCacheURL else {
+            VoiceIM.logger.error("无法保存图片：磁盘缓存目录不可用")
+            throw ImageCacheError.diskCacheUnavailable
+        }
         let fileName = UUID().uuidString + ".jpg"
-        let cacheURL = diskCacheURL.appendingPathComponent(fileName)
+        let cacheURL = diskBase.appendingPathComponent(fileName)
 
         let thumbnailSize = CGSize(width: 250, height: 350)
         guard let thumbnail = await downsampleImage(at: tempURL, to: thumbnailSize) else {
@@ -249,19 +265,28 @@ final class ImageCacheManager {
 
     /// 清理磁盘缓存
     func clearDiskCache() async {
-        let count = await DiskCacheUtilities.clearDirectory(diskCacheURL)
+        guard let diskBase = diskCacheURL else {
+            VoiceIM.logger.warning("跳过清理图片磁盘缓存：目录不可用")
+            return
+        }
+        let count = await DiskCacheUtilities.clearDirectory(diskBase)
         VoiceIM.logger.info("Cleared image disk cache (\(count) files)")
     }
 
     /// 获取缓存占用大小
     func getCacheSize() async -> (memory: Int, disk: Int) {
-        let diskSize = await DiskCacheUtilities.directorySize(diskCacheURL)
+        let diskSize: Int
+        if let diskBase = diskCacheURL {
+            diskSize = await DiskCacheUtilities.directorySize(diskBase)
+        } else {
+            diskSize = 0
+        }
         return (memory: 0, disk: diskSize)
     }
 
     /// 按文件名拼接磁盘缓存路径（兼容旧代码路径回退逻辑）
-    nonisolated func fileURL(for fileName: String) -> URL {
-        diskCacheURL.appendingPathComponent(fileName)
+    nonisolated func fileURL(for fileName: String) -> URL? {
+        diskCacheURL?.appendingPathComponent(fileName)
     }
 
     // MARK: - Private: Load
@@ -278,10 +303,11 @@ final class ImageCacheManager {
 
     private func loadRemoteImage(url: URL, targetSize: CGSize?) async -> UIImage? {
         let diskFileName = StableHash.fileName(for: url, defaultExtension: "jpg")
-        let diskURL = diskCacheURL.appendingPathComponent(diskFileName)
+        let diskURL = diskCacheURL?.appendingPathComponent(diskFileName)
 
         // 磁盘缓存命中
-        if FileManager.default.fileExists(atPath: diskURL.path),
+        if let diskURL,
+           FileManager.default.fileExists(atPath: diskURL.path),
            let image = await downsampleImage(at: diskURL, to: targetSize) {
             writeToMemoryCache(image: image, key: memoryCacheKey(for: url))
             VoiceIM.logger.debug("💿 Disk hit: \(url.lastPathComponent)")
@@ -299,9 +325,11 @@ final class ImageCacheManager {
         writeToMemoryCache(image: image, key: memoryCacheKey(for: url))
 
         // 异步写磁盘，不阻塞返回
-        Task.detached(priority: .background) {
-            guard let cacheData = image.jpegData(compressionQuality: 0.8) else { return }
-            try? cacheData.write(to: diskURL)
+        if let diskURL {
+            Task.detached(priority: .background) {
+                guard let cacheData = image.jpegData(compressionQuality: 0.8) else { return }
+                try? cacheData.write(to: diskURL)
+            }
         }
 
         VoiceIM.logger.info("✅ Downloaded: \(url.lastPathComponent)")

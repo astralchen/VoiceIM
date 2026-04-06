@@ -44,12 +44,17 @@ struct ChatMessage: Sendable, Hashable, Codable {
 
     // MARK: - 字段
 
-    let id: UUID
-    var kind: Kind  // 改为 var，支持撤回时修改
+    /// 消息唯一标识（有序字符串，由 MessageIDGenerator 生成）
+    let id: String
+    /// 客户端幂等键，与数据库 messages.client_msg_id 对应，防止网络重发产生重复消息
+    let clientMsgID: String
+    var kind: Kind
     let sender: Sender
     let sentAt: Date
     /// 是否已播放；仅 voice 有意义，text 固定为 true
     var isPlayed: Bool
+    /// 是否已读；用于会话级未读数统计（微信风格）
+    var isRead: Bool
     /// 发送状态；仅自己发送的消息（`isOutgoing = true`）有意义，对方消息固定为 `.delivered`
     ///
     /// # 注意事项
@@ -72,18 +77,22 @@ struct ChatMessage: Sendable, Hashable, Codable {
     // MARK: - 初始化
 
     init(
-        id: UUID,
+        id: String = MessageIDGenerator.next(),
+        clientMsgID: String? = nil,
         kind: Kind,
         sender: Sender,
         sentAt: Date,
         isPlayed: Bool,
+        isRead: Bool,
         sendStatus: SendStatus
     ) {
         self.id = id
+        self.clientMsgID = clientMsgID ?? id
         self.kind = kind
         self.sender = sender
         self.sentAt = sentAt
         self.isPlayed = isPlayed
+        self.isRead = isRead
         self.sendStatus = sendStatus
     }
 
@@ -92,13 +101,12 @@ struct ChatMessage: Sendable, Hashable, Codable {
     /// 本地录制的语音消息（发送方固定为自己）
     static func voice(localURL: URL, duration: TimeInterval,
                       sentAt: Date = Date()) -> Self {
-        ChatMessage(id: UUID(),
-                    kind: .voice(localURL: localURL, remoteURL: nil, duration: duration),
-                    sender: .me, sentAt: sentAt, isPlayed: false, sendStatus: .sending)
+        ChatMessage(kind: .voice(localURL: localURL, remoteURL: nil, duration: duration),
+                    sender: .me, sentAt: sentAt, isPlayed: false, isRead: true, sendStatus: .sending)
     }
 
     /// 来自服务器的远程语音消息
-    static func remoteVoice(id: UUID = UUID(),
+    static func remoteVoice(id: String = MessageIDGenerator.next(),
                             remoteURL: URL,
                             duration: TimeInterval,
                             isPlayed: Bool = false,
@@ -106,7 +114,11 @@ struct ChatMessage: Sendable, Hashable, Codable {
                             sentAt: Date = Date()) -> Self {
         ChatMessage(id: id,
                     kind: .voice(localURL: nil, remoteURL: remoteURL, duration: duration),
-                    sender: sender, sentAt: sentAt, isPlayed: isPlayed, sendStatus: .delivered)
+                    sender: sender,
+                    sentAt: sentAt,
+                    isPlayed: isPlayed,
+                    isRead: sender.id == Sender.me.id ? true : isPlayed,
+                    sendStatus: .delivered)
     }
 
     /// 文本消息（无未读概念，isPlayed 固定 true）
@@ -127,57 +139,66 @@ struct ChatMessage: Sendable, Hashable, Codable {
             resolved = .sending
         }
         return ChatMessage(
-            id: UUID(),
             kind: .text(content),
             sender: sender,
             sentAt: sentAt,
             isPlayed: true,
+            isRead: sender.id == Sender.me.id,
             sendStatus: resolved
         )
     }
 
     /// 本地图片消息（发送方固定为自己）
     static func image(localURL: URL, sentAt: Date = Date()) -> Self {
-        ChatMessage(id: UUID(),
-                    kind: .image(localURL: localURL, remoteURL: nil),
-                    sender: .me, sentAt: sentAt, isPlayed: true, sendStatus: .sending)
+        ChatMessage(kind: .image(localURL: localURL, remoteURL: nil),
+                    sender: .me, sentAt: sentAt, isPlayed: true, isRead: true, sendStatus: .sending)
     }
 
     /// 来自服务器的远程图片消息
-    static func remoteImage(id: UUID = UUID(),
+    static func remoteImage(id: String = MessageIDGenerator.next(),
                             remoteURL: URL,
                             sender: Sender = .peer,
                             sentAt: Date = Date()) -> Self {
         ChatMessage(id: id,
                     kind: .image(localURL: nil, remoteURL: remoteURL),
-                    sender: sender, sentAt: sentAt, isPlayed: true, sendStatus: .delivered)
+                    sender: sender,
+                    sentAt: sentAt,
+                    isPlayed: true,
+                    isRead: sender.id == Sender.me.id,
+                    sendStatus: .delivered)
     }
 
     /// 本地视频消息（发送方固定为自己）
     static func video(localURL: URL, duration: TimeInterval, sentAt: Date = Date()) -> Self {
-        ChatMessage(id: UUID(),
-                    kind: .video(localURL: localURL, remoteURL: nil, duration: duration),
-                    sender: .me, sentAt: sentAt, isPlayed: true, sendStatus: .sending)
+        ChatMessage(kind: .video(localURL: localURL, remoteURL: nil, duration: duration),
+                    sender: .me, sentAt: sentAt, isPlayed: true, isRead: true, sendStatus: .sending)
     }
 
     /// 来自服务器的远程视频消息
-    static func remoteVideo(id: UUID = UUID(),
+    static func remoteVideo(id: String = MessageIDGenerator.next(),
                             remoteURL: URL,
                             duration: TimeInterval,
                             sender: Sender = .peer,
                             sentAt: Date = Date()) -> Self {
         ChatMessage(id: id,
                     kind: .video(localURL: nil, remoteURL: remoteURL, duration: duration),
-                    sender: sender, sentAt: sentAt, isPlayed: true, sendStatus: .delivered)
+                    sender: sender,
+                    sentAt: sentAt,
+                    isPlayed: true,
+                    isRead: sender.id == Sender.me.id,
+                    sendStatus: .delivered)
     }
 
     /// 撤回消息（保留原文本用于重新编辑）
     static func recalled(originalText: String? = nil,
                          sender: Sender,
                          sentAt: Date = Date()) -> Self {
-        ChatMessage(id: UUID(),
-                    kind: .recalled(originalText: originalText),
-                    sender: sender, sentAt: sentAt, isPlayed: true, sendStatus: .delivered)
+        ChatMessage(kind: .recalled(originalText: originalText),
+                    sender: sender,
+                    sentAt: sentAt,
+                    isPlayed: true,
+                    isRead: sender.id == Sender.me.id,
+                    sendStatus: .delivered)
     }
 
     /// 位置消息
@@ -186,9 +207,9 @@ struct ChatMessage: Sendable, Hashable, Codable {
                          address: String? = nil,
                          sender: Sender = .me,
                          sentAt: Date = Date()) -> Self {
-        ChatMessage(id: UUID(),
-                    kind: .location(latitude: latitude, longitude: longitude, address: address),
+        ChatMessage(kind: .location(latitude: latitude, longitude: longitude, address: address),
                     sender: sender, sentAt: sentAt, isPlayed: true,
+                    isRead: sender.id == Sender.me.id,
                     sendStatus: sender.id == Sender.me.id ? .sending : .delivered)
     }
 }
@@ -210,6 +231,43 @@ extension ChatMessage.Kind {
         case .recalled: return RecalledMessageCell.reuseID
         case .location: return LocationMessageCell.reuseID
         }
+    }
+}
+
+extension ChatMessage {
+    enum CodingKeys: String, CodingKey {
+        case id
+        case clientMsgID
+        case kind
+        case sender
+        case sentAt
+        case isPlayed
+        case isRead
+        case sendStatus
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        clientMsgID = try container.decodeIfPresent(String.self, forKey: .clientMsgID) ?? id
+        kind = try container.decode(Kind.self, forKey: .kind)
+        sender = try container.decode(Sender.self, forKey: .sender)
+        sentAt = try container.decode(Date.self, forKey: .sentAt)
+        isPlayed = try container.decodeIfPresent(Bool.self, forKey: .isPlayed) ?? true
+        isRead = try container.decodeIfPresent(Bool.self, forKey: .isRead) ?? (sender.id == Sender.me.id)
+        sendStatus = try container.decodeIfPresent(SendStatus.self, forKey: .sendStatus) ?? .delivered
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(clientMsgID, forKey: .clientMsgID)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(sender, forKey: .sender)
+        try container.encode(sentAt, forKey: .sentAt)
+        try container.encode(isPlayed, forKey: .isPlayed)
+        try container.encode(isRead, forKey: .isRead)
+        try container.encode(sendStatus, forKey: .sendStatus)
     }
 }
 

@@ -98,13 +98,13 @@ struct CacheUtilitiesTests {
         // 启动多个相同 key 的任务
         async let result1 = deduplicator.deduplicate(key: "test") {
             executionCount += 1
-            try await Task.sleep(for: .milliseconds(100))
+            try await Task.sleep(nanoseconds: 100_000_000)
             return 42
         }
 
         async let result2 = deduplicator.deduplicate(key: "test") {
             executionCount += 1
-            try await Task.sleep(for: .milliseconds(100))
+            try await Task.sleep(nanoseconds: 100_000_000)
             return 99
         }
 
@@ -161,18 +161,24 @@ struct CacheUtilitiesTests {
         // 启动一个长时间任务
         let task = Task {
             try await deduplicator.deduplicate(key: "cancel") {
-                try await Task.sleep(for: .seconds(10))
+                try await Task.sleep(nanoseconds: 10_000_000_000)
                 return 42
             }
         }
 
-        // 立即取消
+        // 先让任务进入 inFlight，再取消，避免竞态导致取消失效
+        await Task.yield()
         await deduplicator.cancel(key: "cancel")
         task.cancel()
 
         // 验证任务被取消
         let result = await task.result
-        #expect(result == .failure(CancellationError()))
+        switch result {
+        case .failure(let error):
+            #expect(error is CancellationError)
+        case .success:
+            Issue.record("任务应当已取消")
+        }
     }
 
     // MARK: - MemoryCacheWrapper Tests

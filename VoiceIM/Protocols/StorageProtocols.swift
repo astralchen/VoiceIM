@@ -1,124 +1,90 @@
 import Foundation
 
-/// 消息存储协议
+/// 消息存储协议（按会话隔离读写）
 ///
 /// 定义消息持久化的核心能力，解耦 Repository 与具体实现。
-///
-/// # 实现者
-/// - `MessageStorage`：生产环境使用的存储实现
-/// - `MockMessageStorage`：单元测试使用的 Mock 实现
+/// 生产环境实现为 `MessageStorage`（基于 GRDB 关系模型）。
 protocol MessageStorageProtocol: Actor {
 
-    /// 保存消息列表
-    ///
-    /// - Parameter messages: 要保存的消息列表
-    /// - Throws: 保存失败时抛出错误
-    func save(_ messages: [ChatMessage]) throws
+    /// 保存消息列表到指定会话
+    func save(_ messages: [ChatMessage], contactID: String) throws
 
-    /// 加载消息列表
-    ///
-    /// - Returns: 已保存的消息列表
-    /// - Throws: 加载失败时抛出错误
-    func load() throws -> [ChatMessage]
+    /// 加载指定会话的消息列表
+    func load(contactID: String) throws -> [ChatMessage]
 
-    /// 追加单条消息
-    ///
-    /// - Parameter message: 要追加的消息
-    /// - Throws: 追加失败时抛出错误
-    func append(_ message: ChatMessage) throws
+    /// 追加单条消息到指定会话
+    func append(_ message: ChatMessage, contactID: String) throws
 
-    /// 删除指定消息
-    ///
-    /// - Parameter id: 消息 ID
-    /// - Throws: 删除失败时抛出错误
-    func delete(id: UUID) throws
+    /// 物理删除指定消息
+    func delete(id: String, contactID: String) throws
 
-    /// 更新消息
-    ///
-    /// - Parameter message: 更新后的消息
-    /// - Throws: 更新失败时抛出错误
-    func update(_ message: ChatMessage) throws
+    /// 更新指定会话中的消息
+    func update(_ message: ChatMessage, contactID: String) throws
 
-    /// 清空所有消息
-    ///
-    /// - Throws: 清空失败时抛出错误
-    func clear() throws
+    /// 清空指定会话消息（物理删除）
+    func clear(contactID: String) throws
 
     /// 获取存储大小（字节）
-    ///
-    /// - Returns: 存储文件的大小
     func getStorageSize() -> UInt64
+}
+
+/// 会话存储协议（会话列表、未读、已读）
+///
+/// 定义会话级聚合查询能力，供 `ConversationListViewModel` 等使用。
+protocol ConversationStorageProtocol: Actor {
+
+    /// 标记指定会话所有对方消息为已读
+    func markConversationAsRead(contactID: String) throws
+
+    /// 查询指定会话的未读消息数
+    func unreadCount(conversationID: String) throws -> Int
+
+    /// 加载全部已存在会话 ID（含被隐藏会话）
+    func loadAllConversationIDs() throws -> [String]
+
+    /// 加载会话列表摘要（一次聚合查询，含置顶状态、预览文案与时间，避免 N+1）
+    func loadConversationSummaries() throws -> [(ConversationRecord, Int, Bool, String, Int64?)]
+
+    /// 获取会话最后一条可见消息的预览文本与时间戳
+    func lastMessagePreview(conversationID: String) throws -> (String, Int64)?
+
+    /// 设置会话置顶状态
+    func setConversationPinned(contactID: String, pinned: Bool) throws
+
+    /// 设置会话是否隐藏（隐藏后不出现在列表，直到有新消息自动恢复）
+    func setConversationHidden(contactID: String, hidden: Bool) throws
+
+    /// 物理删除会话（级联删除消息/成员/设置等关联数据）
+    func deleteConversation(contactID: String) throws
+}
+
+/// 回执存储协议（已读/已播/未读计数）
+///
+/// 用于隔离回执相关能力边界，便于后续从聚合存储中拆分独立实现。
+protocol ReceiptStorageProtocol: Actor {
+    /// 标记会话为已读（写入回执并归零未读）
+    func markConversationAsRead(contactID: String) throws
+
+    /// 查询会话未读数
+    func unreadCount(conversationID: String) throws -> Int
 }
 
 /// 文件存储协议
 ///
 /// 定义文件存储管理的核心能力，解耦 Repository 与具体实现。
-///
-/// # 实现者
-/// - `FileStorageManager`：生产环境使用的存储实现
-/// - `MockFileStorageManager`：单元测试使用的 Mock 实现
 protocol FileStorageProtocol: Actor {
 
-    /// 语音文件目录
     var voiceDirectory: URL { get }
-
-    /// 图片文件目录
     var imageDirectory: URL { get }
-
-    /// 视频文件目录
     var videoDirectory: URL { get }
 
-    /// 保存语音文件
-    ///
-    /// - Parameter tempURL: 临时文件 URL
-    /// - Returns: 保存后的文件 URL
-    /// - Throws: 保存失败时抛出错误
     func saveVoiceFile(from tempURL: URL) throws -> URL
-
-    /// 保存图片文件
-    ///
-    /// - Parameter tempURL: 临时文件 URL
-    /// - Returns: 保存后的文件 URL
-    /// - Throws: 保存失败时抛出错误
     func saveImageFile(from tempURL: URL) throws -> URL
-
-    /// 保存视频文件
-    ///
-    /// - Parameter tempURL: 临时文件 URL
-    /// - Returns: 保存后的文件 URL
-    /// - Throws: 保存失败时抛出错误
     func saveVideoFile(from tempURL: URL) throws -> URL
-
-    /// 删除文件
-    ///
-    /// - Parameter url: 文件 URL
-    /// - Throws: 删除失败时抛出错误
     func deleteFile(at url: URL) throws
-
-    /// 检查文件是否存在
-    ///
-    /// - Parameter url: 文件 URL
-    /// - Returns: 文件是否存在
     func fileExists(at url: URL) -> Bool
-
-    /// 获取缓存大小（字节）
-    ///
-    /// - Returns: 缓存总大小
     func getCacheSize() -> UInt64
-
-    /// 获取格式化的缓存大小（如 "1.5 MB"）
-    ///
-    /// - Returns: 格式化的缓存大小字符串
     func getFormattedCacheSize() -> String
-
-    /// 清空所有缓存
-    ///
-    /// - Throws: 清空失败时抛出错误
     func clearAllCache() throws
-
-    /// 清理孤立文件（未被消息引用的文件）
-    ///
-    /// - Parameter referencedURLs: 被引用的文件 URL 集合
-    /// - Returns: 清理的文件数量
     func cleanOrphanedFiles(referencedURLs: Set<URL>) -> Int
 }

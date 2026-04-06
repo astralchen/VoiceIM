@@ -58,7 +58,7 @@ final class VoiceChatViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "消息"
+        title = viewModel.contact.displayName
         view.backgroundColor = .systemBackground
 
         // 初始化依赖组件
@@ -92,6 +92,7 @@ final class VoiceChatViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         viewModel.stopPlayback()
+        viewModel.cancelActiveTasks()
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -162,12 +163,17 @@ final class VoiceChatViewController: UIViewController {
             messageDataSource.appendMessage(message, animatingDifferences: true)
         }
 
-        // 更新已存在消息的状态（isPlayed, sendStatus）
+        // 更新已存在消息的状态（kind, isPlayed, sendStatus）
         for message in messages where currentIDs.contains(message.id) {
             if let index = messageDataSource.messages.firstIndex(where: { $0.id == message.id }) {
                 let current = messageDataSource.messages[index]
 
-                // 检查状态是否变化
+                // kind 变化（撤回/编辑）→ 整体替换 cell
+                if current.kind.reuseID != message.kind.reuseID {
+                    messageDataSource.replaceMessage(id: message.id, with: message)
+                    continue
+                }
+
                 if current.isPlayed != message.isPlayed {
                     messageDataSource.markAsPlayed(id: message.id)
                 }
@@ -203,6 +209,7 @@ final class VoiceChatViewController: UIViewController {
         VideoMessageCell.register(in: collectionView)
         RecalledMessageCell.register(in: collectionView)
         LocationMessageCell.register(in: collectionView)
+        collectionView.delegate = self
         view.addSubview(collectionView)
 
         // 点击空白处收起键盘
@@ -368,7 +375,7 @@ final class VoiceChatViewController: UIViewController {
 
     private func setupPlaybackCallbacks() {
         // 直接使用协议类型，无需向下转型
-        viewModel.playbackService.onStart = { [weak self] (id: UUID) in
+        viewModel.playbackService.onStart = { [weak self] (id: String) in
             VoiceIM.logger.debug("Playback started for message: \(id)")
             guard let self = self else { return }
 
@@ -376,13 +383,13 @@ final class VoiceChatViewController: UIViewController {
             self.messageDataSource.reloadMessage(id: id)
         }
 
-        viewModel.playbackService.onProgress = { [weak self] (id: UUID, progress: Float) in
+        viewModel.playbackService.onProgress = { [weak self] (id: String, progress: Float) in
             guard let self = self else { return }
             // 刷新正在播放的 Cell，更新进度条和剩余时长
             self.messageDataSource.reloadMessage(id: id)
         }
 
-        viewModel.playbackService.onStop = { [weak self] (id: UUID) in
+        viewModel.playbackService.onStop = { [weak self] (id: String) in
             VoiceIM.logger.debug("Playback stopped for message: \(id)")
             guard let self = self else { return }
 
@@ -656,7 +663,7 @@ extension VoiceChatViewController: LocationMessageCellDelegate {
 
 // MARK: - UIScrollViewDelegate (消息预加载)
 
-extension VoiceChatViewController {
+extension VoiceChatViewController: UICollectionViewDelegate {
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         // 获取可见的 IndexPath

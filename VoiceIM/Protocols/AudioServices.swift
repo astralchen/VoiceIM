@@ -53,19 +53,19 @@ protocol AudioRecordService {
 protocol AudioPlaybackService: AnyObject {
 
     /// 当前正在播放的消息 ID
-    var playingID: UUID? { get }
+    var playingID: String? { get }
 
     /// 开始播放回调
-    var onStart: ((UUID) -> Void)? { get set }
+    var onStart: ((String) -> Void)? { get set }
 
     /// 播放进度回调 (消息ID, 进度 0~1)
-    var onProgress: ((UUID, Float) -> Void)? { get set }
+    var onProgress: ((String, Float) -> Void)? { get set }
 
     /// 停止/播放完成回调
-    var onStop: ((UUID) -> Void)? { get set }
+    var onStop: ((String) -> Void)? { get set }
 
     /// 播放指定 URL 的语音
-    func play(id: UUID, url: URL) throws
+    func play(id: String, url: URL) throws
 
     /// 停止当前播放
     func stopCurrent()
@@ -74,16 +74,16 @@ protocol AudioPlaybackService: AnyObject {
     ///
     /// - Parameter id: 消息 ID
     /// - Returns: 是否正在播放
-    func isPlaying(id: UUID) -> Bool
+    func isPlaying(id: String) -> Bool
 
     /// 获取当前播放进度（0~1）
-    func currentProgress(for id: UUID) -> Float
+    func currentProgress(for id: String) -> Float
 
     /// 当前解码得到的音频总时长（秒）；仅当正在播放指定消息时非零，用于与消息内嵌时长对齐展示
-    func playbackDuration(for id: UUID) -> TimeInterval
+    func playbackDuration(for id: String) -> TimeInterval
 
     /// 当前播放剩余时长（秒）；与 `currentTime` 同源，避免用进度反推时出现尾段显示 0" 而条仍在动
-    func playbackRemaining(for id: UUID) -> TimeInterval
+    func playbackRemaining(for id: String) -> TimeInterval
 
     /// 跳转到指定进度（0~1）
     func seek(to progress: Float)
@@ -165,19 +165,19 @@ protocol MessageDataSourceProtocol {
     func prependMessages(_ newMessages: [ChatMessage])
 
     /// 删除消息
-    func deleteMessage(id: UUID) -> ChatMessage?
+    func deleteMessage(id: String) -> ChatMessage?
 
     /// 替换消息（用于撤回）
-    func replaceMessage(id: UUID, with newMessage: ChatMessage)
+    func replaceMessage(id: String, with newMessage: ChatMessage)
 
     /// 标记消息为已播放
-    func markAsPlayed(id: UUID)
+    func markAsPlayed(id: String)
 
     /// 更新消息发送状态
-    func updateSendStatus(id: UUID, status: ChatMessage.SendStatus)
+    func updateSendStatus(id: String, status: ChatMessage.SendStatus)
 
     /// 查找消息索引
-    func index(of id: UUID) -> Int?
+    func index(of id: String) -> Int?
 
     /// 获取消息
     func message(at index: Int) -> ChatMessage?

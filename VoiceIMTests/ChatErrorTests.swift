@@ -8,34 +8,34 @@ struct ChatErrorTests {
 
     @Test("网络错误描述")
     func testNetworkErrorDescription() {
-        let error = ChatError.noConnection
-        #expect(error.errorDescription == "无网络连接")
+        let error = ChatError.networkUnavailable
+        #expect(error.errorDescription == "网络连接不可用")
     }
 
     @Test("文件错误描述")
     func testFileErrorDescription() {
         let url = URL(fileURLWithPath: "/tmp/test.m4a")
-        let error = ChatError.fileNotFound(url)
+        let error = ChatError.fileNotFound(path: url.path)
         #expect(error.errorDescription?.contains("test.m4a") == true)
     }
 
     @Test("权限错误描述")
     func testPermissionErrorDescription() {
-        let error = ChatError.permissionDenied(.microphone)
-        #expect(error.errorDescription == "需要麦克风权限以录制语音消息")
+        let error = ChatError.microphonePermissionDenied
+        #expect(error.errorDescription == "麦克风权限被拒绝")
         #expect(error.recoverySuggestion?.contains("设置") == true)
     }
 
     @Test("录音错误描述")
     func testRecordingErrorDescription() {
-        let error = ChatError.recordingTooShort(duration: 0.5)
+        let error = ChatError.recordingTooShort
         #expect(error.errorDescription?.contains("太短") == true)
-        #expect(error.recoverySuggestion?.contains("1 秒") == true)
+        #expect(error.recoverySuggestion?.contains("长按") == true)
     }
 
-    @Test("撤回失败原因")
-    func testRecallFailureReason() {
-        let reason = RecallFailureReason.timeExpired(elapsed: 240, limit: 180)
-        #expect(reason.description.contains("超过撤回时限") == true)
+    @Test("消息撤回错误描述")
+    func testMessageRecallFailedDescription() {
+        let error = ChatError.messageRecallFailed
+        #expect(error.errorDescription == "消息撤回失败")
     }
 }

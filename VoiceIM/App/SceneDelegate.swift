@@ -6,16 +6,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
-
-        // 使用 MVVM 架构
-        let dependencies = AppDependencies.shared
-        let viewModel = dependencies.makeChatViewModel()
-        let chatViewController = VoiceChatViewController(viewModel: viewModel)
-
-        let navigationController = UINavigationController(rootViewController: chatViewController)
-
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = navigationController
+        window.rootViewController = AppCompositionRoot.makeRootViewController()
         window.makeKeyAndVisible()
         self.window = window
     }

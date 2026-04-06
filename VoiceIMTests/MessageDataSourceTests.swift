@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import UIKit
 @testable import VoiceIM
 
 /// MessageDataSource 单元测试
@@ -16,12 +17,14 @@ struct MessageDataSourceTests {
     }
 
     /// 创建测试消息
-    func makeTestMessage(id: UUID = UUID(), text: String = "测试消息", isOutgoing: Bool = true) -> ChatMessage {
+    func makeTestMessage(id: String = MessageIDGenerator.next(), text: String = "测试消息", isOutgoing: Bool = true) -> ChatMessage {
         ChatMessage(
             id: id,
             kind: .text(text),
-            isOutgoing: isOutgoing,
+            sender: isOutgoing ? .me : .peer,
             sentAt: Date(),
+            isPlayed: true,
+            isRead: true,
             sendStatus: .delivered
         )
     }
@@ -124,7 +127,7 @@ struct MessageDataSourceTests {
         dataSource.appendMessage(message, animatingDifferences: false)
 
         // 尝试删除不存在的消息
-        let deleted = dataSource.deleteMessage(id: UUID())
+        let deleted = dataSource.deleteMessage(id: MessageIDGenerator.next())
 
         #expect(deleted == nil)
         #expect(dataSource.messages.count == 1)
@@ -144,8 +147,10 @@ struct MessageDataSourceTests {
         let recalledMessage = ChatMessage(
             id: originalMessage.id,
             kind: .recalled(originalText: "原始消息"),
-            isOutgoing: true,
+            sender: .me,
             sentAt: originalMessage.sentAt,
+            isPlayed: true,
+            isRead: true,
             sendStatus: .delivered
         )
 
@@ -168,10 +173,12 @@ struct MessageDataSourceTests {
 
         let voiceURL = URL(fileURLWithPath: "/tmp/test.m4a")
         var message = ChatMessage(
-            id: UUID(),
-            kind: .voice(voiceURL, duration: 5.0),
-            isOutgoing: false,
+            id: MessageIDGenerator.next(),
+            kind: .voice(localURL: voiceURL, remoteURL: nil, duration: 5.0),
+            sender: .peer,
             sentAt: Date(),
+            isPlayed: false,
+            isRead: false,
             sendStatus: .delivered
         )
         message.isPlayed = false
@@ -197,9 +204,9 @@ struct MessageDataSourceTests {
         dataSource.appendMessage(message, animatingDifferences: false)
 
         // 更新为已送达
-        dataSource.updateSendStatus(id: message.id, status: .delivered)
+        dataSource.updateSendStatus(id: message.id, status: ChatMessage.SendStatus.delivered)
 
-        #expect(dataSource.messages[0].sendStatus == .delivered)
+        #expect(dataSource.messages[0].sendStatus == ChatMessage.SendStatus.delivered)
     }
 
     @Test("更新为发送失败状态")
@@ -213,9 +220,9 @@ struct MessageDataSourceTests {
         dataSource.appendMessage(message, animatingDifferences: false)
 
         // 更新为失败
-        dataSource.updateSendStatus(id: message.id, status: .failed)
+        dataSource.updateSendStatus(id: message.id, status: ChatMessage.SendStatus.failed)
 
-        #expect(dataSource.messages[0].sendStatus == .failed)
+        #expect(dataSource.messages[0].sendStatus == ChatMessage.SendStatus.failed)
     }
 
     // MARK: - Index and Message Lookup Tests
@@ -236,7 +243,7 @@ struct MessageDataSourceTests {
         #expect(dataSource.index(of: message1.id) == 0)
         #expect(dataSource.index(of: message2.id) == 1)
         #expect(dataSource.index(of: message3.id) == 2)
-        #expect(dataSource.index(of: UUID()) == nil)
+        #expect(dataSource.index(of: MessageIDGenerator.next()) == nil)
     }
 
     @Test("根据索引获取消息")
@@ -264,11 +271,11 @@ struct MessageDataSourceTests {
         let dataSource = MessageDataSource(collectionView: collectionView)
 
         // 删除不存在的消息
-        let deleted = dataSource.deleteMessage(id: UUID())
+        let deleted = dataSource.deleteMessage(id: MessageIDGenerator.next())
         #expect(deleted == nil)
 
         // 查找不存在的索引
-        let index = dataSource.index(of: UUID())
+        let index = dataSource.index(of: MessageIDGenerator.next())
         #expect(index == nil)
 
         // 获取越界的消息

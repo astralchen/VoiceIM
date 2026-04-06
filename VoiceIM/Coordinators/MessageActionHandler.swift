@@ -35,15 +35,15 @@ final class MessageActionHandler {
 
     /// 删除消息回调
     /// 参数：消息 ID
-    var onDelete: ((UUID) -> Void)?
+    var onDelete: ((String) -> Void)?
 
     /// 撤回消息回调
     /// 参数：消息 ID
-    var onRecall: ((UUID) -> Void)?
+    var onRecall: ((String) -> Void)?
 
     /// 重试消息回调
     /// 参数：消息 ID
-    var onRetry: ((UUID) -> Void)?
+    var onRetry: ((String) -> Void)?
 
     /// 撤回消息点击回调（用于重新编辑文本）
     /// 参数：撤回消息对象
@@ -150,7 +150,7 @@ final class MessageActionHandler {
     /// 实际删除逻辑由 ViewController 通过 onDelete 回调处理。
     ///
     /// - Parameter id: 消息 ID
-    func deleteMessage(_ id: UUID) {
+    func deleteMessage(_ id: String) {
         // 正在播放该条消息时先停止，避免播放器持有悬空 URL
         if player.isPlaying(id: id) {
             player.stopCurrent()
@@ -164,7 +164,7 @@ final class MessageActionHandler {
     /// 实际撤回逻辑由 ViewController 通过 onRecall 回调处理。
     ///
     /// - Parameter id: 消息 ID
-    func recallMessage(_ id: UUID) {
+    func recallMessage(_ id: String) {
         // 正在播放该条消息时先停止
         if player.isPlaying(id: id) {
             player.stopCurrent()
@@ -180,7 +180,7 @@ final class MessageActionHandler {
     /// 3. 追加到列表底部并触发发送
     ///
     /// - Parameter id: 消息 ID
-    func retryMessage(_ id: UUID) {
+    func retryMessage(_ id: String) {
         onRetry?(id)
     }
 

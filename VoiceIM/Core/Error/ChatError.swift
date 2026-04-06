@@ -44,7 +44,7 @@ enum ChatError: Error {
     case messageSendFailed
     case messageDeleteFailed
     case messageRecallFailed
-    case messageNotFound(id: UUID)
+    case messageNotFound(id: String)
 
     // MARK: - 媒体错误
 

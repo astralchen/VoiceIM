@@ -11,14 +11,14 @@ final class VoicePlaybackManager: NSObject, AudioPlaybackService {
     private var progressTimer: Timer?
 
     /// 正在播放的消息 ID
-    private(set) var playingID: UUID?
+    private(set) var playingID: String?
 
     /// 开始播放回调
-    var onStart: ((UUID) -> Void)?
+    var onStart: ((String) -> Void)?
     /// 播放进度回调 (消息ID, 进度 0~1)
-    var onProgress: ((UUID, Float) -> Void)?
+    var onProgress: ((String, Float) -> Void)?
     /// 停止/播放完成回调
-    var onStop: ((UUID) -> Void)?
+    var onStop: ((String) -> Void)?
 
     private override init() {
         super.init()
@@ -32,7 +32,7 @@ final class VoicePlaybackManager: NSObject, AudioPlaybackService {
     // MARK: - 公共接口
 
     /// 播放指定 URL 的语音，自动停止当前正在播放的语音
-    func play(id: UUID, url: URL) throws {
+    func play(id: String, url: URL) throws {
         stopCurrent()
 
         let session = AVAudioSession.sharedInstance()
@@ -69,24 +69,24 @@ final class VoicePlaybackManager: NSObject, AudioPlaybackService {
     }
 
     /// 是否正在播放指定消息
-    func isPlaying(id: UUID) -> Bool {
+    func isPlaying(id: String) -> Bool {
         playingID == id
     }
 
     /// 获取当前播放进度（0~1），如果没有播放或不是指定消息则返回 0
-    func currentProgress(for id: UUID) -> Float {
+    func currentProgress(for id: String) -> Float {
         guard playingID == id,
               let p = player,
               p.duration > 0 else { return 0 }
         return Float(p.currentTime / p.duration)
     }
 
-    func playbackDuration(for id: UUID) -> TimeInterval {
+    func playbackDuration(for id: String) -> TimeInterval {
         guard playingID == id, let p = player else { return 0 }
         return p.duration
     }
 
-    func playbackRemaining(for id: UUID) -> TimeInterval {
+    func playbackRemaining(for id: String) -> TimeInterval {
         guard playingID == id, let p = player, p.duration > 0 else { return 0 }
         return max(0, p.duration - p.currentTime)
     }

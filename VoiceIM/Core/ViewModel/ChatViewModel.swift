@@ -21,7 +21,7 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var messages: [ChatMessage] = []
 
     /// 正在播放的消息 ID
-    @Published private(set) var playingMessageID: UUID?
+    @Published private(set) var playingMessageID: String?
 
     /// 播放进度（0.0 ~ 1.0）
     @Published private(set) var playbackProgress: Float = 0
@@ -34,6 +34,8 @@ final class ChatViewModel: ObservableObject {
 
     /// 错误信息
     @Published var error: ChatError?
+    let contact: Contact
+    let conversationID: String
 
     // MARK: - Dependencies
 
@@ -50,12 +52,13 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - Private Properties
 
-    private var cancellables = Set<AnyCancellable>()
+    private var activeTasks: [UUID: Task<Void, Never>] = [:]
 
     // MARK: - Init
 
     /// - Parameter voiceFileCache: 仅用于「仅有 `remoteURL`」的语音：`resolve` 下载到缓存目录后再交给 `playbackService`。由 `AppDependencies.makeChatViewModel` 传入 `VoiceCacheManager`。
     init(
+        contact: Contact,
         repository: MessageRepository,
         playbackService: AudioPlaybackService,
         mediaPlaybackCoordinator: MediaPlaybackCoordinator,
@@ -65,7 +68,9 @@ final class ChatViewModel: ObservableObject {
         voiceFileCache: any FileCacheService = VoiceCacheManager.shared,
         logger: Logger = VoiceIM.logger
     ) {
+        self.contact = contact
         self.repository = repository
+        self.conversationID = repository.conversationID
         self.playbackService = playbackService
         self.mediaPlaybackCoordinator = mediaPlaybackCoordinator
         self.recordService = recordService
@@ -75,51 +80,38 @@ final class ChatViewModel: ObservableObject {
         self.logger = logger
 
         setupPlaybackCallbacks()
-        loadMessages()
     }
 
     // MARK: - Message Operations
 
-    /// 加载消息列表
+    /// 加载消息列表（由 ViewController 的 viewDidLoad 调用，不在 init 中自动触发）
     func loadMessages() {
-        Task {
+        let taskID = UUID()
+        let task = Task { [weak self] in
+            guard let self else { return }
             do {
-                messages = try await repository.loadMessages()
-                logger.info("Loaded \(messages.count) messages")
-
-                // 调试：检查每条消息的文件路径
-                for message in messages {
-                    switch message.kind {
-                    case .voice(let localURL, _, _):
-                        logger.debug("Voice message: \(message.id)")
-                        logger.debug("  localURL: \(String(describing: localURL))")
-                        if let url = localURL {
-                            let exists = FileManager.default.fileExists(atPath: url.path)
-                            logger.debug("  file exists: \(exists)")
-                        }
-                    case .image(let localURL, _):
-                        logger.debug("Image message: \(message.id)")
-                        logger.debug("  localURL: \(String(describing: localURL))")
-                        if let url = localURL {
-                            let exists = FileManager.default.fileExists(atPath: url.path)
-                            logger.debug("  file exists: \(exists)")
-                        }
-                    case .video(let localURL, _, _):
-                        logger.debug("Video message: \(message.id)")
-                        logger.debug("  localURL: \(String(describing: localURL))")
-                        if let url = localURL {
-                            let exists = FileManager.default.fileExists(atPath: url.path)
-                            logger.debug("  file exists: \(exists)")
-                        }
-                    default:
-                        break
-                    }
+                let loaded = try await repository.loadMessages()
+                guard !Task.isCancelled else { return }
+                messages = loaded
+                try? await repository.markConversationAsRead()
+                for index in messages.indices where !messages[index].isOutgoing {
+                    messages[index].isRead = true
                 }
+                logger.info("Loaded \(messages.count) messages")
             } catch {
+                guard !Task.isCancelled else { return }
                 logger.error("Failed to load messages: \(error)")
                 self.error = error as? ChatError ?? .unknown(error)
             }
+            activeTasks.removeValue(forKey: taskID)
         }
+        activeTasks[taskID] = task
+    }
+
+    /// 取消所有进行中的异步任务（页面销毁时调用）
+    func cancelActiveTasks() {
+        activeTasks.values.forEach { $0.cancel() }
+        activeTasks.removeAll()
     }
 
     /// 发送文本消息
@@ -227,7 +219,7 @@ final class ChatViewModel: ObservableObject {
     /// 删除消息
     ///
     /// - Parameter id: 消息 ID
-    func deleteMessage(id: UUID) {
+    func deleteMessage(id: String) {
         Task {
             do {
                 try await repository.deleteMessage(id: id)
@@ -243,7 +235,7 @@ final class ChatViewModel: ObservableObject {
     /// 撤回消息
     ///
     /// - Parameter id: 消息 ID
-    func recallMessage(id: UUID) {
+    func recallMessage(id: String) {
         Task {
             do {
                 try await repository.recallMessage(id: id)
@@ -271,40 +263,106 @@ final class ChatViewModel: ObservableObject {
     /// 重试发送失败的消息
     ///
     /// - Parameter id: 消息 ID
-    func retryMessage(id: UUID) {
+    func retryMessage(id: String) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
         let message = messages[index]
 
-        // 删除失败的消息
-        messages.remove(at: index)
-
-        // 根据类型重新发送
         switch message.kind {
-        case .text(let content):
-            sendTextMessage(content)
-        case .voice(let localURL, _, let duration):
-            if let url = localURL {
-                sendVoiceMessage(url: url, duration: duration)
+        case .voice(let localURL, _, _), .image(let localURL, _), .video(let localURL, _, _):
+            if localURL == nil {
+                Task {
+                    try? await repository.updateSendStatus(id: id, status: .failed)
+                    if let i = messages.firstIndex(where: { $0.id == id }) {
+                        messages[i].sendStatus = .failed
+                    }
+                }
+                return
             }
-        case .image(let localURL, _):
-            if let url = localURL {
-                sendImageMessage(url: url)
-            }
-        case .video(let localURL, _, let duration):
-            if let url = localURL {
-                sendVideoMessage(url: url, duration: duration)
-            }
-        case .location(let lat, let lon, let address):
-            sendLocationMessage(latitude: lat, longitude: lon, address: address)
         case .recalled:
+            return
+        default:
             break
+        }
+
+        messages[index].sendStatus = .sending
+
+        Task {
+            do {
+                try await repository.updateSendStatus(id: id, status: .sending)
+            } catch {
+                logger.error("Failed to update send status to sending: \(error)")
+                if let i = messages.firstIndex(where: { $0.id == id }) {
+                    messages[i].sendStatus = .failed
+                }
+                return
+            }
+
+            let msg = message
+            var tempResendURL: URL?
+            defer {
+                if let t = tempResendURL {
+                    try? FileManager.default.removeItem(at: t)
+                }
+            }
+
+            do {
+                switch msg.kind {
+                case .voice(let localURL, _, _), .image(let localURL, _), .video(let localURL, _, _):
+                    if let src = localURL {
+                        let ext = src.pathExtension.isEmpty ? "dat" : src.pathExtension
+                        let dst = FileManager.default.temporaryDirectory
+                            .appendingPathComponent(UUID().uuidString)
+                            .appendingPathExtension(ext)
+                        try FileManager.default.copyItem(at: src, to: dst)
+                        tempResendURL = dst
+                    }
+                default:
+                    break
+                }
+
+                try await repository.deleteMessage(id: id)
+                messages.removeAll { $0.id == id }
+
+                let newMessage: ChatMessage
+                switch msg.kind {
+                case .text(let content):
+                    newMessage = try await repository.sendTextMessage(text: content)
+                case .voice(_, _, let duration):
+                    guard let url = tempResendURL else { throw ChatError.messageSendFailed }
+                    newMessage = try await repository.sendVoiceMessage(tempURL: url, duration: duration)
+                case .image:
+                    guard let url = tempResendURL else { throw ChatError.messageSendFailed }
+                    newMessage = try await repository.sendImageMessage(tempURL: url)
+                case .video(_, _, let duration):
+                    guard let url = tempResendURL else { throw ChatError.messageSendFailed }
+                    newMessage = try await repository.sendVideoMessage(tempURL: url, duration: duration)
+                case .location(let lat, let lon, let address):
+                    newMessage = try await repository.sendLocationMessage(
+                        latitude: lat,
+                        longitude: lon,
+                        address: address
+                    )
+                case .recalled:
+                    return
+                }
+
+                messages.append(newMessage)
+                sendMessageToServer(id: newMessage.id)
+            } catch {
+                logger.error("Failed to retry message: \(error)")
+                self.error = error as? ChatError ?? .unknown(error)
+                try? await repository.updateSendStatus(id: id, status: .failed)
+                if let i = messages.firstIndex(where: { $0.id == id }) {
+                    messages[i].sendStatus = .failed
+                }
+            }
         }
     }
 
     /// 标记消息为已播放
     ///
     /// - Parameter id: 消息 ID
-    func markAsPlayed(id: UUID) {
+    func markAsPlayed(id: String) {
         Task {
             do {
                 try await repository.markAsPlayed(id: id)
@@ -312,6 +370,7 @@ final class ChatViewModel: ObservableObject {
                 // 更新本地消息列表
                 if let index = messages.firstIndex(where: { $0.id == id }) {
                     messages[index].isPlayed = true
+                    messages[index].isRead = true
                 }
 
                 logger.debug("Marked message \(id) as played")
@@ -345,7 +404,7 @@ final class ChatViewModel: ObservableObject {
     /// 优先播放本地文件；本地不存在且有 `remoteURL` 时先经 `voiceFileCache` 下载再播放。
     ///
     /// - Parameter id: 消息 ID
-    func playVoiceMessage(id: UUID) {
+    func playVoiceMessage(id: String) {
         guard let message = messages.first(where: { $0.id == id }),
               case .voice(let localURL, let remoteURL, _) = message.kind else { return }
 
@@ -393,7 +452,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// 播放器 `onStop` 时同步 ViewModel 状态（含被视频互斥打断的场景）
-    func handlePlaybackStopped(id: UUID) {
+    func handlePlaybackStopped(id: String) {
         if playingMessageID == id {
             playingMessageID = nil
             playbackProgress = 0
@@ -413,7 +472,7 @@ final class ChatViewModel: ObservableObject {
     ///
     /// 替代原来的 simulateSendMessage，使用真实的网络请求
     /// 当前实现：直接标记为已送达（待接入真实 API）
-    private func sendMessageToServer(id: UUID) {
+    private func sendMessageToServer(id: String) {
         Task {
             do {
                 // TODO: 接入真实的网络 API

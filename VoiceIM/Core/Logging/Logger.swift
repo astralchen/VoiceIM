@@ -76,13 +76,21 @@ final class ConsoleLogger: Logger {
 /// 文件日志输出
 final class FileLogger: Logger {
     var minimumLevel: LogLevel
-    private let fileURL: URL
-    private let fileHandle: FileHandle?
+
+    private let maxFileSize: UInt64 = 5 * 1024 * 1024
+    private let maxFileCount = 3
+    private let logDirectory: URL
+    private let baseFileName: String
+
+    private var fileHandle: FileHandle?
+
+    private var currentLogURL: URL {
+        logDirectory.appendingPathComponent("\(baseFileName).log")
+    }
 
     init(minimumLevel: LogLevel = .info, logDirectory: URL? = nil) {
         self.minimumLevel = minimumLevel
 
-        // 默认日志目录：Documents/Logs/
         let directory: URL
         if let logDirectory = logDirectory {
             directory = logDirectory
@@ -93,20 +101,19 @@ final class FileLogger: Logger {
             }
             directory = documentsURL.appendingPathComponent("Logs", isDirectory: true)
         }
+        self.logDirectory = directory
 
-        // 创建日志目录
+        self.baseFileName = "VoiceIM_\(DateFormatter.logFileName.string(from: Date()))"
+
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        // 日志文件名：VoiceIM_2026-04-05.log
-        let fileName = "VoiceIM_\(DateFormatter.logFileName.string(from: Date())).log"
-        self.fileURL = directory.appendingPathComponent(fileName)
+        cleanupOldLogs()
 
-        // 创建或打开日志文件
-        if !FileManager.default.fileExists(atPath: fileURL.path) {
-            FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+        if !FileManager.default.fileExists(atPath: currentLogURL.path) {
+            FileManager.default.createFile(atPath: currentLogURL.path, contents: nil)
         }
-        self.fileHandle = try? FileHandle(forWritingTo: fileURL)
-        self.fileHandle?.seekToEndOfFile()
+        fileHandle = try? FileHandle(forWritingTo: currentLogURL)
+        fileHandle?.seekToEndOfFile()
     }
 
     deinit {
@@ -116,12 +123,73 @@ final class FileLogger: Logger {
     func log(_ message: String, level: LogLevel, file: String, function: String, line: Int) {
         guard level >= minimumLevel else { return }
 
+        let sanitized = LogSanitizer.sanitize(message)
         let fileName = (file as NSString).lastPathComponent
         let timestamp = DateFormatter.logTimestamp.string(from: Date())
-        let logLine = "\(timestamp) \(level.prefix) [\(fileName):\(line)] \(function) - \(message)\n"
+        let logLine = "\(timestamp) \(level.prefix) [\(fileName):\(line)] \(function) - \(sanitized)\n"
 
-        if let data = logLine.data(using: .utf8) {
-            fileHandle?.write(data)
+        guard let data = logLine.data(using: .utf8) else { return }
+
+        rotateIfNeeded(pendingWriteLength: UInt64(data.count))
+
+        fileHandle?.write(data)
+    }
+
+    private func rotateIfNeeded(pendingWriteLength: UInt64) {
+        let path = currentLogURL.path
+        let currentSize: UInt64
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+           let size = attrs[.size] as? NSNumber {
+            currentSize = size.uint64Value
+        } else {
+            currentSize = 0
+        }
+
+        guard currentSize + pendingWriteLength >= maxFileSize else { return }
+
+        try? fileHandle?.close()
+        fileHandle = nil
+
+        let fm = FileManager.default
+        let basePath = path
+        let oldestPath = "\(basePath).\(maxFileCount - 1)"
+        if fm.fileExists(atPath: oldestPath) {
+            try? fm.removeItem(atPath: oldestPath)
+        }
+        var n = maxFileCount - 2
+        while n >= 1 {
+            let fromPath = "\(basePath).\(n)"
+            let toPath = "\(basePath).\(n + 1)"
+            if fm.fileExists(atPath: fromPath) {
+                if fm.fileExists(atPath: toPath) {
+                    try? fm.removeItem(atPath: toPath)
+                }
+                try? fm.moveItem(atPath: fromPath, toPath: toPath)
+            }
+            n -= 1
+        }
+        if fm.fileExists(atPath: basePath) {
+            let toPath = "\(basePath).1"
+            if fm.fileExists(atPath: toPath) {
+                try? fm.removeItem(atPath: toPath)
+            }
+            try? fm.moveItem(atPath: basePath, toPath: toPath)
+        }
+
+        FileManager.default.createFile(atPath: basePath, contents: nil)
+        fileHandle = try? FileHandle(forWritingTo: currentLogURL)
+        fileHandle?.seekToEndOfFile()
+
+        cleanupOldLogs()
+    }
+
+    private func cleanupOldLogs() {
+        let basePath = currentLogURL.path
+        let fm = FileManager.default
+        var index = maxFileCount
+        while fm.fileExists(atPath: "\(basePath).\(index)") {
+            try? fm.removeItem(atPath: "\(basePath).\(index)")
+            index += 1
         }
     }
 }
@@ -150,18 +218,60 @@ final class CompositeLogger: Logger {
     }
 }
 
+// MARK: - 日志脱敏
+
+enum LogSanitizer {
+    private static let urlPattern = try! NSRegularExpression(
+        pattern: "https?://[^\\s]+", options: []
+    )
+    private static let uuidPattern = try! NSRegularExpression(
+        pattern: "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+        options: []
+    )
+    private static let phonePattern = try! NSRegularExpression(
+        pattern: "1[3-9]\\d{9}", options: []
+    )
+    private static let emailPattern = try! NSRegularExpression(
+        pattern: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
+        options: []
+    )
+
+    static func sanitize(_ message: String) -> String {
+        #if DEBUG
+        return message
+        #else
+        var result = message
+        let range = NSRange(result.startIndex..., in: result)
+        result = urlPattern.stringByReplacingMatches(
+            in: result, range: range, withTemplate: "[URL_REDACTED]"
+        )
+        let range2 = NSRange(result.startIndex..., in: result)
+        result = uuidPattern.stringByReplacingMatches(
+            in: result, range: range2, withTemplate: "[ID]"
+        )
+        let range3 = NSRange(result.startIndex..., in: result)
+        result = phonePattern.stringByReplacingMatches(
+            in: result, range: range3, withTemplate: "[PHONE_REDACTED]"
+        )
+        let range4 = NSRange(result.startIndex..., in: result)
+        result = emailPattern.stringByReplacingMatches(
+            in: result, range: range4, withTemplate: "[EMAIL_REDACTED]"
+        )
+        return result
+        #endif
+    }
+}
+
 // MARK: - Global Logger
 
 /// 全局日志实例
 nonisolated(unsafe) var logger: Logger = {
     #if DEBUG
-    // Debug 模式：控制台 + 文件
     return CompositeLogger(loggers: [
         ConsoleLogger(minimumLevel: .debug),
         FileLogger(minimumLevel: .info)
     ])
     #else
-    // Release 模式：仅文件
     return FileLogger(minimumLevel: .warning)
     #endif
 }()

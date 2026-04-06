@@ -3,7 +3,7 @@ import UIKit
 @testable import VoiceIM
 
 /// KeyboardManager 单元测试
-@Suite("KeyboardManager Tests")
+@Suite("KeyboardManager Tests", .serialized)
 @MainActor
 struct KeyboardManagerTests {
 
@@ -138,7 +138,7 @@ struct KeyboardManagerTests {
         )
 
         // 等待动画完成
-        try? await Task.sleep(for: .milliseconds(300))
+        try? await Task.sleep(nanoseconds: 300_000_000)
 
         // 验证约束被更新
         #expect(constraint.constant < 0)
@@ -162,8 +162,13 @@ struct KeyboardManagerTests {
 
         manager.startObserving()
 
-        // 模拟键盘隐藏通知（endFrame.minY == 屏幕底部）
-        let endFrame = CGRect(x: 0, y: 667, width: 375, height: 300)
+        // 模拟键盘隐藏通知（endFrame.minY == 当前窗口底部）
+        let endFrame = CGRect(
+            x: 0,
+            y: UIScreen.main.bounds.maxY + 1000,
+            width: window.bounds.width,
+            height: 300
+        )
 
         let userInfo: [AnyHashable: Any] = [
             UIResponder.keyboardFrameEndUserInfoKey: NSValue(cgRect: endFrame),
@@ -178,7 +183,7 @@ struct KeyboardManagerTests {
         )
 
         // 等待动画完成
-        try? await Task.sleep(for: .milliseconds(300))
+        try? await Task.sleep(nanoseconds: 300_000_000)
 
         // 验证约束恢复到安全区域底部
         #expect(constraint.constant == -safeAreaBottom)

@@ -27,7 +27,7 @@ final class MessagePreloader {
     private let preloadWindow = 5
 
     /// 当前预加载的消息 ID
-    private var preloadedMessageIDs = Set<UUID>()
+    private var preloadedMessageIDs = Set<String>()
 
     /// 上次可见范围（用于判断滚动方向）
     private var lastVisibleRange: Range<Int>?
@@ -169,7 +169,7 @@ final class MessagePreloader {
         let keepRange = max(0, visibleRange.lowerBound - cleanupThreshold)..<min(messages.count, visibleRange.upperBound + cleanupThreshold)
 
         // 找出需要清理的消息 ID
-        var idsToRemove = Set<UUID>()
+        var idsToRemove = Set<String>()
         for (index, message) in messages.enumerated() {
             if !keepRange.contains(index) && preloadedMessageIDs.contains(message.id) {
                 idsToRemove.insert(message.id)

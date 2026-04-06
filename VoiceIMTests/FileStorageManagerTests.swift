@@ -7,39 +7,39 @@ import Foundation
 struct FileStorageManagerTests {
 
     @Test("保存录音文件")
-    func testSaveVoiceFile() throws {
+    func testSaveVoiceFile() async throws {
         let manager = FileStorageManager(testMode: true)
 
         // 创建临时文件
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test.m4a")
         try "Hello World".data(using: .utf8)!.write(to: tempURL)
 
-        let savedURL = try manager.saveVoiceFile(from: tempURL)
+        let savedURL = try await manager.saveVoiceFile(from: tempURL)
 
-        #expect(manager.fileExists(at: savedURL) == true)
+        #expect(await manager.fileExists(at: savedURL) == true)
 
         // 清理
-        try manager.deleteFile(at: savedURL)
+        try await manager.deleteFile(at: savedURL)
         try? FileManager.default.removeItem(at: tempURL)
     }
 
     @Test("删除文件")
-    func testDeleteFile() throws {
+    func testDeleteFile() async throws {
         let manager = FileStorageManager(testMode: true)
 
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_delete.m4a")
         try "Hello World".data(using: .utf8)!.write(to: tempURL)
 
-        let savedURL = try manager.saveVoiceFile(from: tempURL)
-        try manager.deleteFile(at: savedURL)
+        let savedURL = try await manager.saveVoiceFile(from: tempURL)
+        try await manager.deleteFile(at: savedURL)
 
-        #expect(manager.fileExists(at: savedURL) == false)
+        #expect(await manager.fileExists(at: savedURL) == false)
 
         try? FileManager.default.removeItem(at: tempURL)
     }
 
     @Test("计算缓存大小")
-    func testCacheSize() throws {
+    func testCacheSize() async throws {
         let manager = FileStorageManager(testMode: true)
         let data = Data(repeating: 0, count: 1024)  // 1KB
 
@@ -48,38 +48,38 @@ struct FileStorageManagerTests {
         try data.write(to: tempURL1)
         try data.write(to: tempURL2)
 
-        let savedURL1 = try manager.saveVoiceFile(from: tempURL1)
-        let savedURL2 = try manager.saveVoiceFile(from: tempURL2)
+        let savedURL1 = try await manager.saveVoiceFile(from: tempURL1)
+        let savedURL2 = try await manager.saveVoiceFile(from: tempURL2)
 
-        let size = manager.getCacheSize()
+        let size = await manager.getCacheSize()
         #expect(size >= 2048)  // 至少 2KB
 
         // 清理
-        try manager.deleteFile(at: savedURL1)
-        try manager.deleteFile(at: savedURL2)
+        try await manager.deleteFile(at: savedURL1)
+        try await manager.deleteFile(at: savedURL2)
         try? FileManager.default.removeItem(at: tempURL1)
         try? FileManager.default.removeItem(at: tempURL2)
     }
 
     @Test("清理所有缓存")
-    func testClearAllCache() throws {
+    func testClearAllCache() async throws {
         let manager = FileStorageManager(testMode: true)
 
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_clear.jpg")
         try "Test".data(using: .utf8)!.write(to: tempURL)
 
-        _ = try manager.saveImageFile(from: tempURL)
+        _ = try await manager.saveImageFile(from: tempURL)
 
-        try manager.clearAllCache()
+        try await manager.clearAllCache()
 
-        let size = manager.getCacheSize()
+        let size = await manager.getCacheSize()
         #expect(size == 0)
 
         try? FileManager.default.removeItem(at: tempURL)
     }
 
     @Test("清理孤立文件")
-    func testCleanupOrphanedFiles() throws {
+    func testCleanupOrphanedFiles() async throws {
         let manager = FileStorageManager(testMode: true)
 
         let tempURL1 = FileManager.default.temporaryDirectory.appendingPathComponent("test_orphan_1.m4a")
@@ -87,19 +87,19 @@ struct FileStorageManagerTests {
         try "Test".data(using: .utf8)!.write(to: tempURL1)
         try "Test".data(using: .utf8)!.write(to: tempURL2)
 
-        let savedURL1 = try manager.saveVoiceFile(from: tempURL1)
-        let savedURL2 = try manager.saveVoiceFile(from: tempURL2)
+        let savedURL1 = try await manager.saveVoiceFile(from: tempURL1)
+        let savedURL2 = try await manager.saveVoiceFile(from: tempURL2)
 
         // 只保留 savedURL1
         let validURLs: Set<URL> = [savedURL1]
-        let cleanedCount = manager.cleanOrphanedFiles(referencedURLs: validURLs)
+        let cleanedCount = await manager.cleanOrphanedFiles(referencedURLs: validURLs)
 
         #expect(cleanedCount == 1)
-        #expect(manager.fileExists(at: savedURL1) == true)
-        #expect(manager.fileExists(at: savedURL2) == false)
+        #expect(await manager.fileExists(at: savedURL1) == true)
+        #expect(await manager.fileExists(at: savedURL2) == false)
 
         // 清理
-        try manager.deleteFile(at: savedURL1)
+        try await manager.deleteFile(at: savedURL1)
         try? FileManager.default.removeItem(at: tempURL1)
         try? FileManager.default.removeItem(at: tempURL2)
     }
