@@ -15,7 +15,7 @@ actor VoiceCacheManager: FileCacheService {
             let fallback = FileManager.default.temporaryDirectory
                 .appendingPathComponent("VoiceIM/IMVoiceCache", isDirectory: true)
             try? FileManager.default.createDirectory(at: fallback, withIntermediateDirectories: true)
-            print("语音远程缓存目录创建失败，已使用临时目录")
+            VoiceIM.logger.warning("语音远程缓存目录创建失败，已使用临时目录")
             voiceDirectory = fallback
         }
     }

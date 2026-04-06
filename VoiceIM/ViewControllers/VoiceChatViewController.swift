@@ -386,6 +386,7 @@ final class VoiceChatViewController: UIViewController {
             VoiceIM.logger.debug("Playback stopped for message: \(id)")
             guard let self = self else { return }
 
+            self.viewModel.handlePlaybackStopped(id: id)
             // 刷新 Cell，让播放按钮恢复
             self.messageDataSource.reloadMessage(id: id)
         }
@@ -634,7 +635,9 @@ extension VoiceChatViewController: VideoMessageCellDelegate {
             return
         }
 
-        let previewVC = VideoPreviewViewController(videoURL: resolvedURL)
+        let previewVC = VideoPreviewViewController(
+            videoURL: resolvedURL,
+            mediaCoordinator: viewModel.mediaPlaybackCoordinator)
         previewVC.setZoomTransition(from: { [weak cell] in cell?.bubble }, image: cell.currentThumbnailImage)
         present(previewVC, animated: true)
     }

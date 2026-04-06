@@ -36,7 +36,7 @@ actor FileStorageManager: FileStorageProtocol {
         do {
             try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
         } catch {
-            print("Failed to create voice directory: \(error)")
+            VoiceIM.logger.error("Failed to create voice directory: \(error)")
         }
         return url
     }()
@@ -46,7 +46,7 @@ actor FileStorageManager: FileStorageProtocol {
         do {
             try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
         } catch {
-            print("Failed to create image directory: \(error)")
+            VoiceIM.logger.error("Failed to create image directory: \(error)")
         }
         return url
     }()
@@ -56,7 +56,7 @@ actor FileStorageManager: FileStorageProtocol {
         do {
             try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
         } catch {
-            print("Failed to create video directory: \(error)")
+            VoiceIM.logger.error("Failed to create video directory: \(error)")
         }
         return url
     }()
@@ -111,7 +111,7 @@ actor FileStorageManager: FileStorageProtocol {
         do {
             try fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
         } catch {
-            print("Failed to create base directory: \(error)")
+            VoiceIM.logger.error("Failed to create base directory: \(error)")
         }
     }
 
@@ -131,7 +131,7 @@ actor FileStorageManager: FileStorageProtocol {
         do {
             try fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
         } catch {
-            print("Failed to create base directory: \(error)")
+            VoiceIM.logger.error("Failed to create base directory: \(error)")
         }
     }
 

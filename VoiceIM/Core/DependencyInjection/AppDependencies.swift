@@ -49,6 +49,11 @@ final class AppDependencies {
     /// 播放服务
     let playbackService: AudioPlaybackService
 
+    /// 语音与全屏视频播放互斥
+    private(set) lazy var mediaPlaybackCoordinator: MediaPlaybackCoordinator = {
+        MediaPlaybackCoordinator(audioPlayback: playbackService)
+    }()
+
     /// 缓存服务
     let cacheService: VoiceCacheManager
 
@@ -108,6 +113,7 @@ final class AppDependencies {
         ChatViewModel(
             repository: messageRepository,
             playbackService: playbackService,
+            mediaPlaybackCoordinator: mediaPlaybackCoordinator,
             recordService: recordService,
             photoPickerService: photoPickerService,
             errorHandler: errorHandler,
@@ -178,6 +184,7 @@ extension AppDependencies {
         return dependencies
     }
 
+    #if DEBUG
     /// 测试专用初始化方法
     private static func __testInit(
         logger: Logger?,
@@ -232,6 +239,7 @@ extension AppDependencies {
         // 由于属性是 let，这里需要使用 Mirror 或重构为 var
         // 暂时保持现状，标记为待实现
     }
+    #endif
 
     private func setErrorHandler(_ errorHandler: ErrorHandler) {}
     private func setMessageStorage(_ messageStorage: MessageStorage) {}

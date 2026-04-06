@@ -39,6 +39,8 @@ final class ChatViewModel: ObservableObject {
 
     private let repository: MessageRepository
     let playbackService: AudioPlaybackService  // internal，供 ViewController 使用
+    /// 语音与全屏视频互斥；供视频预览页注册/视频起播前停语音
+    let mediaPlaybackCoordinator: MediaPlaybackCoordinator
     let recordService: AudioRecordService  // internal，供 ViewController 使用
     let photoPickerService: PhotoPickerService  // internal，供 ViewController 使用
     let errorHandler: ErrorHandler  // internal，供 ViewController 使用
@@ -56,6 +58,7 @@ final class ChatViewModel: ObservableObject {
     init(
         repository: MessageRepository,
         playbackService: AudioPlaybackService,
+        mediaPlaybackCoordinator: MediaPlaybackCoordinator,
         recordService: AudioRecordService,
         photoPickerService: PhotoPickerService,
         errorHandler: ErrorHandler,
@@ -64,6 +67,7 @@ final class ChatViewModel: ObservableObject {
     ) {
         self.repository = repository
         self.playbackService = playbackService
+        self.mediaPlaybackCoordinator = mediaPlaybackCoordinator
         self.recordService = recordService
         self.photoPickerService = photoPickerService
         self.errorHandler = errorHandler
@@ -347,6 +351,8 @@ final class ChatViewModel: ObservableObject {
 
         // `resolve` 为异步下载，必须在 Task 中执行；播放与 UI 状态仍在主 actor 上更新
         Task {
+            mediaPlaybackCoordinator.willBeginVoicePlayback()
+
             let playURL: URL
             // 发送方本地 m4a 或已落盘的接收方文件
             if let local = localURL, FileManager.default.fileExists(atPath: local.path) {
@@ -384,6 +390,14 @@ final class ChatViewModel: ObservableObject {
         playbackService.stopCurrent()
         playingMessageID = nil
         playbackProgress = 0
+    }
+
+    /// 播放器 `onStop` 时同步 ViewModel 状态（含被视频互斥打断的场景）
+    func handlePlaybackStopped(id: UUID) {
+        if playingMessageID == id {
+            playingMessageID = nil
+            playbackProgress = 0
+        }
     }
 
     // MARK: - Private Methods

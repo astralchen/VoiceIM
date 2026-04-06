@@ -36,7 +36,7 @@ actor VideoCacheManager {
             thumbnailCacheURL = tempDir.appendingPathComponent("VoiceIM/VideoThumbnailCache", isDirectory: true)
             try? FileManager.default.createDirectory(at: videoCacheURL, withIntermediateDirectories: true)
             try? FileManager.default.createDirectory(at: thumbnailCacheURL, withIntermediateDirectories: true)
-            print("视频缓存目录创建失败，已使用临时目录")
+            VoiceIM.logger.warning("视频缓存目录创建失败，已使用临时目录")
         }
 
         Task {

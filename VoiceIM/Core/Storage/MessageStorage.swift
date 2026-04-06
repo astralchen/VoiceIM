@@ -54,7 +54,7 @@ actor MessageStorage: MessageStorageProtocol {
         do {
             try fileManager.createDirectory(at: baseURL, withIntermediateDirectories: true)
         } catch {
-            print("Failed to create storage directory: \(error)")
+            VoiceIM.logger.error("Failed to create storage directory: \(error)")
         }
 
         self.storageURL = baseURL.appendingPathComponent("messages.json")

@@ -119,7 +119,7 @@ extension VoiceRecordManager: AVAudioRecorderDelegate {
     nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         if !flag {
             Task { @MainActor in
-                print("Recording finished with error")
+                VoiceIM.logger.error("Recording finished with error")
             }
         }
     }
@@ -127,7 +127,7 @@ extension VoiceRecordManager: AVAudioRecorderDelegate {
     nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
         Task { @MainActor in
             if let error = error {
-                print("Recording encode error: \(error)")
+                VoiceIM.logger.error("Recording encode error: \(error)")
             }
         }
     }

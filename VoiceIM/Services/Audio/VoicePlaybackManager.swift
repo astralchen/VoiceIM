@@ -150,7 +150,7 @@ extension VoicePlaybackManager: AVAudioPlayerDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             if !flag {
-                print("Playback failed")
+                VoiceIM.logger.error("Playback failed")
             }
             self.progressTimer?.invalidate()
             self.progressTimer = nil
