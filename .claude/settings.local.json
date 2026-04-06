@@ -26,7 +26,8 @@
       "Bash(wc -l /Users/chenchen/Documents/GitHub/VoiceIM/VoiceIM/**/*.swift)",
       "Read(//tmp/**)",
       "Bash(swift /tmp/test_url.swift)",
-      "Bash(wc -l VoiceIM/**/*.swift)"
+      "Bash(wc -l VoiceIM/**/*.swift)",
+      "Bash(git mv:*)"
     ]
   }
 }

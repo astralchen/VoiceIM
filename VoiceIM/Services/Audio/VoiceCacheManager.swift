@@ -6,20 +6,22 @@ actor VoiceCacheManager: FileCacheService {
     static let shared = VoiceCacheManager()
 
     private let cacheDir: URL
-    /// 正在进行中的下载任务（避免重复下载）
-    private var inFlight: [URL: Task<URL, Error>] = [:]
+
+    /// 任务去重器（避免重复下载）
+    private let deduplicator = TaskDeduplicator<URL, URL>()
 
     private init() {
-        guard let base = FileManager.default
-            .urls(for: .cachesDirectory, in: .userDomainMask).first else {
-            fatalError("Failed to get caches directory")
-        }
-        cacheDir = base.appendingPathComponent("IMVoiceCache", isDirectory: true)
         do {
-            try FileManager.default.createDirectory(
-                at: cacheDir, withIntermediateDirectories: true)
+            cacheDir = try CacheDirectoryManager.createCacheDirectory(named: "IMVoiceCache")
         } catch {
-            print("Failed to create voice cache directory: \(error)")
+            // 降级处理：使用临时目录
+            cacheDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("IMVoiceCache", isDirectory: true)
+            try? FileManager.default.createDirectory(
+                at: cacheDir,
+                withIntermediateDirectories: true
+            )
+            print("Failed to create voice cache directory, using temp: \(error)")
         }
     }
 
@@ -34,25 +36,9 @@ actor VoiceCacheManager: FileCacheService {
             return dest
         }
 
-        // 已有下载任务，等待完成
-        if let existing = inFlight[remoteURL] {
-            return try await existing.value
-        }
-
-        // 启动新下载任务
-        let destination = dest
-        let task = Task<URL, Error> {
-            try await Self.download(from: remoteURL, to: destination)
-        }
-        inFlight[remoteURL] = task
-
-        do {
-            let result = try await task.value
-            inFlight.removeValue(forKey: remoteURL)
-            return result
-        } catch {
-            inFlight.removeValue(forKey: remoteURL)
-            throw error
+        // 使用去重器执行下载
+        return try await deduplicator.deduplicate(key: remoteURL) {
+            try await Self.download(from: remoteURL, to: dest)
         }
     }
 
@@ -84,9 +70,8 @@ actor VoiceCacheManager: FileCacheService {
     }
 
     private func cacheURL(for remote: URL) -> URL {
-        // 用 URL 字符串的哈希值作为文件名，保留原始扩展名
-        let hash = abs(remote.absoluteString.hashValue)
-        let ext = remote.pathExtension.isEmpty ? "m4a" : remote.pathExtension
-        return cacheDir.appendingPathComponent("\(hash).\(ext)")
+        // 使用稳定哈希生成文件名
+        let fileName = StableHash.fileName(for: remote, defaultExtension: "m4a")
+        return cacheDir.appendingPathComponent(fileName)
     }
 }
