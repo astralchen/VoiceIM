@@ -7,9 +7,11 @@ import Foundation
 struct LoggerTests {
 
     final class TestLogger: Logger {
+        var minimumLevel: LogLevel = .debug
         var logs: [(message: String, level: LogLevel)] = []
 
         func log(_ message: String, level: LogLevel, file: String, function: String, line: Int) {
+            guard level >= minimumLevel else { return }
             logs.append((message, level))
         }
     }
