@@ -27,7 +27,7 @@ import Foundation
 ///
 /// # 线程安全
 /// 使用 actor 隔离保证并发安全
-actor MessageStorage {
+actor MessageStorage: MessageStorageProtocol {
 
     // MARK: - Singleton
 

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		04D49511A68B46BF33D17830 /* StorageProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0313DB5DA678796036D12270 /* StorageProtocols.swift */; };
 		16028A6ACF13090E19FD9988 /* AudioServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E326609DA59981CB15435A96 /* AudioServices.swift */; };
 		169F76BC187D5DF24F703679 /* RecalledMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9FBC89F89203FBE76702E5 /* RecalledMessageCell.swift */; };
 		21B71EA8D2A70E70770502C7 /* ZoomTransitionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAF4A66FA66CE82F54E67D80 /* ZoomTransitionController.swift */; };
@@ -73,6 +74,7 @@
 
 /* Begin PBXFileReference section */
 		0003C34E680C402F7EDC3AA5 /* ZoomTransition+UIViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ZoomTransition+UIViewController.swift"; sourceTree = "<group>"; };
+		0313DB5DA678796036D12270 /* StorageProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageProtocols.swift; sourceTree = "<group>"; };
 		0B116B70AF463441C99E8D91 /* Sender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sender.swift; sourceTree = "<group>"; };
 		102220184BADC48F3B5937D4 /* LoggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoggerTests.swift; sourceTree = "<group>"; };
 		202375FF5D1E7C999D14F0CD /* AppDependencies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDependencies.swift; sourceTree = "<group>"; };
@@ -204,6 +206,7 @@
 				E326609DA59981CB15435A96 /* AudioServices.swift */,
 				8B908CF76DFF91D292CF9D28 /* MessageCellConfigurable.swift */,
 				664D24CA985BDE8CF9FB517B /* MessageCellInteractive.swift */,
+				0313DB5DA678796036D12270 /* StorageProtocols.swift */,
 			);
 			path = Protocols;
 			sourceTree = "<group>";
@@ -483,6 +486,7 @@
 				CC55D3F85D195A6DEDB6D751 /* RecordingOverlayViewController.swift in Sources */,
 				6DB6FE9AE673B5E761C7C573 /* SceneDelegate.swift in Sources */,
 				24BF94103557B449A3C24E9A /* Sender.swift in Sources */,
+				04D49511A68B46BF33D17830 /* StorageProtocols.swift in Sources */,
 				533804A0E73FC812CE52CE82 /* TextMessageCell.swift in Sources */,
 				E289BE59A9EA8014C4BE7528 /* ToastView.swift in Sources */,
 				D309D87237722F2C1A7A4A1D /* VideoCacheManager.swift in Sources */,

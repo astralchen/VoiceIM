@@ -36,10 +36,10 @@ final class AppDependencies {
     // MARK: - Storage Services
 
     /// 消息存储
-    let messageStorage: MessageStorage
+    let messageStorage: any MessageStorageProtocol
 
     /// 文件存储管理器
-    let fileStorageManager: FileStorageManager
+    let fileStorageManager: any FileStorageProtocol
 
     // MARK: - Audio Services
 

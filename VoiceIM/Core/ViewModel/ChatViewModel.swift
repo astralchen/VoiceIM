@@ -38,7 +38,7 @@ final class ChatViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let repository: MessageRepository
-    var playbackService: AudioPlaybackService  // 改为 var，允许外部修改回调
+    let playbackService: AudioPlaybackService  // internal，供 ViewController 使用
     let recordService: AudioRecordService  // internal，供 ViewController 使用
     let photoPickerService: PhotoPickerService  // internal，供 ViewController 使用
     private let logger: Logger

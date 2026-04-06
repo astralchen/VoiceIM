@@ -15,15 +15,15 @@ final class MessageRepository {
 
     // MARK: - Dependencies
 
-    private let storage: MessageStorage
-    private let fileStorage: FileStorageManager
+    private let storage: any MessageStorageProtocol
+    private let fileStorage: any FileStorageProtocol
     private let logger: Logger
 
     // MARK: - Init
 
     init(
-        storage: MessageStorage = .shared,
-        fileStorage: FileStorageManager = .shared,
+        storage: any MessageStorageProtocol = MessageStorage.shared,
+        fileStorage: any FileStorageProtocol = FileStorageManager.shared,
         logger: Logger = VoiceIM.logger
     ) {
         self.storage = storage

@@ -50,7 +50,7 @@ protocol AudioRecordService {
 /// - `VoicePlaybackManager`：生产环境使用的播放器
 /// - `MockPlaybackService`：单元测试使用的 Mock 实现
 @MainActor
-protocol AudioPlaybackService {
+protocol AudioPlaybackService: AnyObject {
 
     /// 当前正在播放的消息 ID
     var playingID: UUID? { get }
