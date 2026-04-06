@@ -46,19 +46,19 @@ actor VideoCacheManager {
         thumbnailCache.countLimit = 100  // 最多缓存 100 张缩略图
         thumbnailCache.totalCostLimit = 20 * 1024 * 1024  // 最多 20MB
 
-        // 配置缓存目录
-        guard let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
-            fatalError("Failed to get caches directory")
-        }
-        videoCacheURL = cacheDir.appendingPathComponent("VideoCache", isDirectory: true)
-        thumbnailCacheURL = cacheDir.appendingPathComponent("VideoThumbnailCache", isDirectory: true)
-
-        // 创建缓存目录
-        do {
-            try FileManager.default.createDirectory(at: videoCacheURL, withIntermediateDirectories: true)
-            try FileManager.default.createDirectory(at: thumbnailCacheURL, withIntermediateDirectories: true)
-        } catch {
-            print("Failed to create video cache directories: \(error)")
+        // 配置缓存目录（使用 if-let 避免重复赋值错误）
+        if let videoURL = try? CacheDirectoryManager.createCacheDirectory(named: "VideoCache"),
+           let thumbnailURL = try? CacheDirectoryManager.createCacheDirectory(named: "VideoThumbnailCache") {
+            videoCacheURL = videoURL
+            thumbnailCacheURL = thumbnailURL
+        } else {
+            // 降级处理：使用临时目录
+            let tempDir = FileManager.default.temporaryDirectory
+            videoCacheURL = tempDir.appendingPathComponent("VideoCache", isDirectory: true)
+            thumbnailCacheURL = tempDir.appendingPathComponent("VideoThumbnailCache", isDirectory: true)
+            try? FileManager.default.createDirectory(at: videoCacheURL, withIntermediateDirectories: true)
+            try? FileManager.default.createDirectory(at: thumbnailCacheURL, withIntermediateDirectories: true)
+            print("Failed to create video cache directories, using temp directory")
         }
 
         // 监听内存警告（在 actor 上下文中注册）
@@ -99,7 +99,7 @@ actor VideoCacheManager {
     /// - Parameter tempURL: 临时视频文件 URL
     /// - Returns: 视频缓存目录中的永久路径（存储到 ChatMessage.kind 里）
     func saveAndCacheVideo(from tempURL: URL) async throws -> URL {
-        let fileName = stableDiskFileName(for: tempURL)
+        let fileName = StableHash.fileName(for: tempURL, defaultExtension: "mp4")
         let permanentURL = videoCacheURL.appendingPathComponent(fileName)
 
         // 视频文件可能较大，在后台线程执行拷贝
@@ -126,8 +126,8 @@ actor VideoCacheManager {
             if FileManager.default.fileExists(atPath: localURL.path) {
                 return localURL
             }
-            // 路径失效，按 stableDiskFileName 在视频缓存目录中查找
-            let cached = videoCacheURL.appendingPathComponent(stableDiskFileName(for: localURL))
+            // 路径失效，按 StableHash.fileName 在视频缓存目录中查找
+            let cached = videoCacheURL.appendingPathComponent(StableHash.fileName(for: localURL, defaultExtension: "mp4"))
             if FileManager.default.fileExists(atPath: cached.path) {
                 return cached
             }
@@ -212,7 +212,7 @@ actor VideoCacheManager {
     /// - Returns: 本地缓存的 URL
     func cacheVideo(from remoteURL: URL) async throws -> URL {
         // 检查是否已缓存
-        let cacheKey = stableDiskFileName(for: remoteURL)
+        let cacheKey = StableHash.fileName(for: remoteURL, defaultExtension: "mp4")
         let cacheURL = videoCacheURL.appendingPathComponent(cacheKey)
 
         if FileManager.default.fileExists(atPath: cacheURL.path) {
@@ -254,29 +254,15 @@ actor VideoCacheManager {
 
     /// 清理磁盘缓存
     func clearDiskCache() async {
-        do {
-            // 清理视频缓存
-            let videoFiles = try FileManager.default.contentsOfDirectory(at: videoCacheURL, includingPropertiesForKeys: nil)
-            for file in videoFiles {
-                try? FileManager.default.removeItem(at: file)
-            }
-
-            // 清理缩略图缓存
-            let thumbnailFiles = try FileManager.default.contentsOfDirectory(at: thumbnailCacheURL, includingPropertiesForKeys: nil)
-            for file in thumbnailFiles {
-                try? FileManager.default.removeItem(at: file)
-            }
-
-            VoiceIM.logger.info("Cleared video disk cache (\(videoFiles.count) videos, \(thumbnailFiles.count) thumbnails)")
-        } catch {
-            VoiceIM.logger.error("Failed to clear video disk cache: \(error)")
-        }
+        let videoCount = await DiskCacheUtilities.clearDirectory(videoCacheURL)
+        let thumbnailCount = await DiskCacheUtilities.clearDirectory(thumbnailCacheURL)
+        VoiceIM.logger.info("Cleared video disk cache (\(videoCount) videos, \(thumbnailCount) thumbnails)")
     }
 
     /// 获取缓存大小
     func getCacheSize() async -> (video: Int, thumbnail: Int) {
-        let videoSize = await getDiskCacheSize(directory: videoCacheURL)
-        let thumbnailSize = await getDiskCacheSize(directory: thumbnailCacheURL)
+        let videoSize = await DiskCacheUtilities.directorySize(videoCacheURL)
+        let thumbnailSize = await DiskCacheUtilities.directorySize(thumbnailCacheURL)
         return (video: videoSize, thumbnail: thumbnailSize)
     }
 
@@ -328,7 +314,7 @@ actor VideoCacheManager {
     ///
     /// `url.standardized.path` 解析符号链接，确保 `/var/...` 和 `/private/var/...` 映射到同一键。
     private nonisolated func memoryCacheKey(for url: URL) -> String {
-        url.isFileURL ? url.standardized.path : url.absoluteString
+        CacheKeyGenerator.memoryCacheKey(for: url)
     }
 
     /// 保存缩略图到磁盘
@@ -347,24 +333,15 @@ actor VideoCacheManager {
     /// - 本地文件：直接取 `lastPathComponent`（UUID 命名，天然唯一且稳定）
     /// - 远程 URL：用 djb2 哈希生成文件名（跨进程/重启稳定，不依赖 Swift.hashValue）
     nonisolated func stableDiskFileName(for url: URL) -> String {
-        if url.isFileURL {
-            return url.lastPathComponent
-        }
-        let string = url.absoluteString
-        var hash: UInt64 = 5381
-        for byte in string.utf8 {
-            hash = hash &* 127 &+ UInt64(byte)
-        }
-        let ext = url.pathExtension.isEmpty ? "mp4" : url.pathExtension
-        return "\(hash).\(ext)"
+        StableHash.fileName(for: url, defaultExtension: "mp4")
     }
 
-    /// 缩略图磁盘缓存文件名（复用 stableDiskFileName，替换扩展名为 .jpg）
+    /// 缩略图磁盘缓存文件名（复用 StableHash.fileName，替换扩展名为 .jpg）
     ///
     /// - 本地 `abc123.mp4` → `abc123.jpg`
     /// - 远程 `12345678.mp4` → `12345678.jpg`
     private nonisolated func thumbnailCacheKey(for url: URL) -> String {
-        let base = (stableDiskFileName(for: url) as NSString).deletingPathExtension
+        let base = (StableHash.fileName(for: url, defaultExtension: "mp4") as NSString).deletingPathExtension
         return base + ".jpg"
     }
 

@@ -123,8 +123,8 @@ final class ImageCacheManager {
             if FileManager.default.fileExists(atPath: localURL.path) {
                 return localURL
             }
-            // 路径失效（如模拟器重启），按 stableDiskFileName 在磁盘缓存中查找
-            let cached = diskCacheURL.appendingPathComponent(stableDiskFileName(for: localURL))
+            // 路径失效（如模拟器重启），按 StableHash.fileName 在磁盘缓存中查找
+            let cached = diskCacheURL.appendingPathComponent(StableHash.fileName(for: localURL, defaultExtension: "jpg"))
             if FileManager.default.fileExists(atPath: cached.path) {
                 return cached
             }
@@ -259,12 +259,13 @@ final class ImageCacheManager {
 
     /// 清理磁盘缓存
     func clearDiskCache() async {
-        await diskActor.clearDirectory(diskCacheURL)
+        let count = await DiskCacheUtilities.clearDirectory(diskCacheURL)
+        VoiceIM.logger.info("Cleared image disk cache (\(count) files)")
     }
 
     /// 获取缓存占用大小
     func getCacheSize() async -> (memory: Int, disk: Int) {
-        let diskSize = await diskActor.directorySize(diskCacheURL)
+        let diskSize = await DiskCacheUtilities.directorySize(diskCacheURL)
         return (memory: 0, disk: diskSize)
     }
 
@@ -286,7 +287,7 @@ final class ImageCacheManager {
     }
 
     private func loadRemoteImage(url: URL, targetSize: CGSize?) async -> UIImage? {
-        let diskFileName = stableDiskFileName(for: url)
+        let diskFileName = StableHash.fileName(for: url, defaultExtension: "jpg")
         let diskURL = diskCacheURL.appendingPathComponent(diskFileName)
 
         // 磁盘缓存命中
@@ -371,7 +372,7 @@ final class ImageCacheManager {
 
     /// 内存缓存键：本地文件用规范路径，远程用完整 URL 字符串
     private nonisolated func memoryCacheKey(for url: URL) -> String {
-        url.isFileURL ? url.standardized.path : url.absoluteString
+        CacheKeyGenerator.memoryCacheKey(for: url)
     }
 
     /// 磁盘缓存文件名（本地和远程 URL 通用）
@@ -379,16 +380,7 @@ final class ImageCacheManager {
     /// - 本地文件：直接取 `lastPathComponent`（UUID 命名，天然唯一且稳定）
     /// - 远程 URL：用 djb2 哈希生成文件名（跨进程/重启稳定，不依赖 Swift.hashValue）
     nonisolated func stableDiskFileName(for url: URL) -> String {
-        if url.isFileURL {
-            return url.lastPathComponent
-        }
-        let string = url.absoluteString
-        var hash: UInt64 = 5381
-        for byte in string.utf8 {
-            hash = hash &* 127 &+ UInt64(byte)
-        }
-        let ext = url.pathExtension.isEmpty ? "jpg" : url.pathExtension
-        return "\(hash).\(ext)"
+        StableHash.fileName(for: url, defaultExtension: "jpg")
     }
 }
 
@@ -397,40 +389,27 @@ final class ImageCacheManager {
 /// 磁盘缓存操作 actor（串行执行，保证并发安全）
 private actor DiskCacheActor {
 
-    private var loadingTasks: [URL: Task<UIImage?, Error>] = [:]
+    /// 任务去重器（避免重复加载）
+    private let deduplicator = TaskDeduplicator<URL, UIImage?>()
 
     func getLoadingTask(for url: URL) -> Task<UIImage?, Error>? {
-        loadingTasks[url]
+        // TaskDeduplicator 内部管理任务，此方法保留用于兼容性
+        nil
     }
 
     func setLoadingTask(_ task: Task<UIImage?, Error>, for url: URL) {
-        loadingTasks[url] = task
+        // TaskDeduplicator 内部管理任务，此方法保留用于兼容性
     }
 
     func removeLoadingTask(for url: URL) {
-        loadingTasks.removeValue(forKey: url)
+        // TaskDeduplicator 内部管理任务，此方法保留用于兼容性
     }
 
-    func clearDirectory(_ url: URL) {
-        do {
-            let files = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
-            for file in files {
-                try? FileManager.default.removeItem(at: file)
-            }
-            VoiceIM.logger.info("Cleared directory: \(url.lastPathComponent) (\(files.count) files)")
-        } catch {
-            VoiceIM.logger.error("Failed to clear directory: \(error)")
-        }
-    }
-
-    func directorySize(_ url: URL) -> Int {
-        guard let files = try? FileManager.default.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: [.fileSizeKey]
-        ) else { return 0 }
-
-        return files.reduce(0) { total, file in
-            total + ((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-        }
+    /// 使用去重器加载图片
+    func loadWithDeduplication(
+        url: URL,
+        operation: @escaping () async throws -> UIImage?
+    ) async throws -> UIImage? {
+        try await deduplicator.deduplicate(key: url, operation: operation)
     }
 }

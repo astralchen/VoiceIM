@@ -186,7 +186,7 @@ final class VoiceChatViewController: UIViewController {
 
     /// 处理错误
     private func handleError(_ error: ChatError) {
-        ErrorHandler.shared.handle(error, in: self)
+        viewModel.errorHandler.handle(error, in: self)
     }
 
     // MARK: - UI 搭建

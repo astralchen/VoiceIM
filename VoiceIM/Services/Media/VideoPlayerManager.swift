@@ -10,8 +10,9 @@ enum VideoPlaybackState {
     case failed(Error)
 }
 
-/// 视频播放管理器（actor 隔离，线程安全）
-actor VideoPlayerManager {
+/// 视频播放管理器（MainActor 隔离，因为 AVPlayer 是 MainActor 隔离的）
+@MainActor
+final class VideoPlayerManager {
 
     private var player: AVPlayer?
     private var timeObserver: Any?
@@ -19,15 +20,15 @@ actor VideoPlayerManager {
 
     private(set) var state: VideoPlaybackState = .idle
 
-    private var _onProgress: (@MainActor (TimeInterval, TimeInterval) -> Void)?
-    private var _onStateChange: (@MainActor (VideoPlaybackState) -> Void)?
-    private var _onFinish: (@MainActor () -> Void)?
+    private var _onProgress: ((TimeInterval, TimeInterval) -> Void)?
+    private var _onStateChange: ((VideoPlaybackState) -> Void)?
+    private var _onFinish: (() -> Void)?
 
     /// 一次性原子设置所有回调（须在 load 之前调用，保证不会漏掉早期状态变化）
     func configureCallbacks(
-        onStateChange: @escaping @MainActor (VideoPlaybackState) -> Void,
-        onProgress: @escaping @MainActor (TimeInterval, TimeInterval) -> Void,
-        onFinish: @escaping @MainActor () -> Void
+        onStateChange: @escaping (VideoPlaybackState) -> Void,
+        onProgress: @escaping (TimeInterval, TimeInterval) -> Void,
+        onFinish: @escaping () -> Void
     ) {
         _onStateChange = onStateChange
         _onProgress = onProgress
@@ -48,8 +49,8 @@ actor VideoPlayerManager {
 
         // 监听播放状态
         statusObservation = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
-            Task { [weak self] in
-                await self?.handleStatusChange(item.status)
+            Task { @MainActor in
+                self?.handleStatusChange(item.status)
             }
         }
 
@@ -58,16 +59,16 @@ actor VideoPlayerManager {
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: .main) { [weak self] _ in
-                Task { [weak self] in
-                    await self?.handlePlaybackFinished()
+                Task { @MainActor in
+                    self?.handlePlaybackFinished()
                 }
             }
 
         // 添加进度监听（每 0.1 秒回调一次）
         let interval = CMTime(seconds: 0.1, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         timeObserver = p.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            Task { [weak self] in
-                await self?.handleProgressUpdate(time)
+            Task { @MainActor in
+                self?.handleProgressUpdate(time)
             }
         }
     }
@@ -128,11 +129,7 @@ actor VideoPlayerManager {
 
     private func updateState(_ newState: VideoPlaybackState) {
         state = newState
-        if let callback = _onStateChange {
-            Task { @MainActor in
-                callback(newState)
-            }
-        }
+        _onStateChange?(newState)
     }
 
     private func handleStatusChange(_ status: AVPlayerItem.Status) {
@@ -157,11 +154,7 @@ actor VideoPlayerManager {
               duration.isFinite, duration > 0 else { return }
 
         let current = time.seconds
-        if let callback = _onProgress {
-            Task { @MainActor in
-                callback(current, duration)
-            }
-        }
+        _onProgress?(current, duration)
     }
 
     private func handlePlaybackFinished() {
@@ -170,10 +163,6 @@ actor VideoPlayerManager {
         player?.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero)
 
         updateState(.paused)
-        if let callback = _onFinish {
-            Task { @MainActor in
-                callback()
-            }
-        }
+        _onFinish?()
     }
 }

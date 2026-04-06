@@ -239,3 +239,69 @@ final class MemoryCacheWrapper<Key: Hashable, Value: AnyObject> {
         cache.removeAllObjects()
     }
 }
+
+// MARK: - Cache Key Generator
+
+/// 缓存键生成器：为 URL 生成统一的缓存键
+enum CacheKeyGenerator {
+
+    /// 生成内存缓存键
+    ///
+    /// - 本地文件 URL：使用规范化路径（解析符号链接，确保 `/var/...` 和 `/private/var/...` 映射到同一键）
+    /// - 远程 URL：使用完整 URL 字符串
+    ///
+    /// - Parameter url: 输入 URL
+    /// - Returns: 缓存键字符串
+    static func memoryCacheKey(for url: URL) -> String {
+        url.isFileURL ? url.standardized.path : url.absoluteString
+    }
+}
+
+// MARK: - Disk Cache Utilities
+
+/// 磁盘缓存工具：提供磁盘缓存相关的通用操作
+enum DiskCacheUtilities {
+
+    /// 计算目录的磁盘占用大小
+    ///
+    /// - Parameter directory: 目录 URL
+    /// - Returns: 目录大小（字节）
+    static func directorySize(_ directory: URL) async -> Int {
+        await Task.detached {
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.fileSizeKey]
+            ) else {
+                return 0
+            }
+
+            return files.reduce(0) { total, file in
+                total + ((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            }
+        }.value
+    }
+
+    /// 清空目录中的所有文件
+    ///
+    /// - Parameter directory: 目录 URL
+    /// - Returns: 删除的文件数量
+    @discardableResult
+    static func clearDirectory(_ directory: URL) async -> Int {
+        await Task.detached {
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil
+            ) else {
+                return 0
+            }
+
+            var deletedCount = 0
+            for file in files {
+                if (try? FileManager.default.removeItem(at: file)) != nil {
+                    deletedCount += 1
+                }
+            }
+            return deletedCount
+        }.value
+    }
+}

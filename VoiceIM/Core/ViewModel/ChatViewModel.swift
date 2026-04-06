@@ -41,6 +41,7 @@ final class ChatViewModel: ObservableObject {
     let playbackService: AudioPlaybackService  // internal，供 ViewController 使用
     let recordService: AudioRecordService  // internal，供 ViewController 使用
     let photoPickerService: PhotoPickerService  // internal，供 ViewController 使用
+    let errorHandler: ErrorHandler  // internal，供 ViewController 使用
     private let logger: Logger
 
     // MARK: - Private Properties
@@ -54,12 +55,14 @@ final class ChatViewModel: ObservableObject {
         playbackService: AudioPlaybackService,
         recordService: AudioRecordService,
         photoPickerService: PhotoPickerService,
+        errorHandler: ErrorHandler,
         logger: Logger = VoiceIM.logger
     ) {
         self.repository = repository
         self.playbackService = playbackService
         self.recordService = recordService
         self.photoPickerService = photoPickerService
+        self.errorHandler = errorHandler
         self.logger = logger
 
         setupPlaybackCallbacks()

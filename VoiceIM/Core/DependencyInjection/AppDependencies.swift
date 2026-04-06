@@ -108,6 +108,7 @@ final class AppDependencies {
             playbackService: playbackService,
             recordService: recordService,
             photoPickerService: photoPickerService,
+            errorHandler: errorHandler,
             logger: logger
         )
     }
