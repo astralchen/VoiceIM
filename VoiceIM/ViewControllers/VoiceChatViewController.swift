@@ -359,14 +359,8 @@ final class VoiceChatViewController: UIViewController {
     // MARK: - 播放回调
 
     private func setupPlaybackCallbacks() {
-        // 获取实际的播放器实例（VoicePlaybackManager）
-        guard let playbackManager = viewModel.playbackService as? VoicePlaybackManager else {
-            VoiceIM.logger.warning("playbackService is not VoicePlaybackManager")
-            return
-        }
-
-        // 设置播放器回调
-        playbackManager.onStart = { [weak self] (id: UUID) in
+        // 直接使用协议类型，无需向下转型
+        viewModel.playbackService.onStart = { [weak self] (id: UUID) in
             VoiceIM.logger.debug("Playback started for message: \(id)")
             guard let self = self else { return }
 
@@ -374,13 +368,13 @@ final class VoiceChatViewController: UIViewController {
             self.messageDataSource.reloadMessage(id: id)
         }
 
-        playbackManager.onProgress = { [weak self] (id: UUID, progress: Float) in
+        viewModel.playbackService.onProgress = { [weak self] (id: UUID, progress: Float) in
             guard let self = self else { return }
             // 刷新正在播放的 Cell，更新进度条和剩余时长
             self.messageDataSource.reloadMessage(id: id)
         }
 
-        playbackManager.onStop = { [weak self] (id: UUID) in
+        viewModel.playbackService.onStop = { [weak self] (id: UUID) in
             VoiceIM.logger.debug("Playback stopped for message: \(id)")
             guard let self = self else { return }
 
