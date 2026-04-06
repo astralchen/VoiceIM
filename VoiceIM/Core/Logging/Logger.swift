@@ -83,9 +83,16 @@ final class FileLogger: Logger {
         self.minimumLevel = minimumLevel
 
         // 默认日志目录：Documents/Logs/
-        let directory = logDirectory ?? FileManager.default
-            .urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Logs", isDirectory: true)
+        let directory: URL
+        if let logDirectory = logDirectory {
+            directory = logDirectory
+        } else {
+            guard let documentsURL = FileManager.default
+                .urls(for: .documentDirectory, in: .userDomainMask).first else {
+                fatalError("Failed to get documents directory")
+            }
+            directory = documentsURL.appendingPathComponent("Logs", isDirectory: true)
+        }
 
         // 创建日志目录
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
