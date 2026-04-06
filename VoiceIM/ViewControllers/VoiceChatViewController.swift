@@ -65,7 +65,11 @@ final class VoiceChatViewController: UIViewController {
         setupCollectionView()
         messageDataSource = MessageDataSource(collectionView: collectionView)
         actionHandler = MessageActionHandler(player: viewModel.playbackService)
-        inputCoordinator = InputCoordinator()
+        inputCoordinator = InputCoordinator(
+            recorder: viewModel.recordService,
+            player: viewModel.playbackService,
+            photoPicker: viewModel.photoPickerService
+        )
 
         setupInputView()
         setupManagers()

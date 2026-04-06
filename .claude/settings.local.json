@@ -24,7 +24,9 @@
       "Bash(find:*)",
       "Bash(git checkout:*)",
       "Bash(wc -l /Users/chenchen/Documents/GitHub/VoiceIM/VoiceIM/**/*.swift)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(swift /tmp/test_url.swift)",
+      "Bash(wc -l VoiceIM/**/*.swift)"
     ]
   }
 }

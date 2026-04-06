@@ -54,10 +54,9 @@ final class MessageActionHandler {
     /// 初始化消息交互处理器
     ///
     /// 使用依赖注入模式，支持替换播放器实现。
-    /// 默认参数使用单例，保持向后兼容。
     ///
-    /// - Parameter player: 播放服务（默认使用 VoicePlaybackManager.shared）
-    init(player: AudioPlaybackService = VoicePlaybackManager.shared) {
+    /// - Parameter player: 播放服务
+    init(player: AudioPlaybackService) {
         self.player = player
     }
 

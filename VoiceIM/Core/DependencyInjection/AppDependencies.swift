@@ -107,6 +107,7 @@ final class AppDependencies {
             repository: messageRepository,
             playbackService: playbackService,
             recordService: recordService,
+            photoPickerService: photoPickerService,
             logger: logger
         )
     }

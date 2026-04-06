@@ -36,6 +36,9 @@ actor VideoCacheManager {
     /// 正在进行的视频下载任务
     private var downloadTasks: [URL: Task<URL, Error>] = [:]
 
+    /// 内存警告观察者
+    private var memoryWarningObserver: NSObjectProtocol?
+
     // MARK: - Init
 
     private init() {
@@ -44,25 +47,44 @@ actor VideoCacheManager {
         thumbnailCache.totalCostLimit = 20 * 1024 * 1024  // 最多 20MB
 
         // 配置缓存目录
-        let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        guard let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            fatalError("Failed to get caches directory")
+        }
         videoCacheURL = cacheDir.appendingPathComponent("VideoCache", isDirectory: true)
         thumbnailCacheURL = cacheDir.appendingPathComponent("VideoThumbnailCache", isDirectory: true)
 
         // 创建缓存目录
-        try? FileManager.default.createDirectory(at: videoCacheURL, withIntermediateDirectories: true)
-        try? FileManager.default.createDirectory(at: thumbnailCacheURL, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: videoCacheURL, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: thumbnailCacheURL, withIntermediateDirectories: true)
+        } catch {
+            print("Failed to create video cache directories: \(error)")
+        }
 
-        // 监听内存警告
+        // 监听内存警告（在 actor 上下文中注册）
+        // 注意：在 actor 的 init 中访问 stored property 需要在所有属性初始化后
+        // 这里使用延迟初始化来避免编译器警告
         Task { @MainActor in
-            let _ = NotificationCenter.default.addObserver(
-                forName: UIApplication.didReceiveMemoryWarningNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task {
-                    await self?.clearMemoryCache()
-                }
+            await self.setupMemoryWarning()
+        }
+    }
+
+    /// 设置内存警告监听（延迟初始化）
+    private func setupMemoryWarning() {
+        memoryWarningObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            Task {
+                await self?.clearMemoryCache()
             }
+        }
+    }
+
+    deinit {
+        if let observer = memoryWarningObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 

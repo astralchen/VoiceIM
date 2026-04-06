@@ -15,11 +15,14 @@ import Foundation
 /// ├── Images/     # 图片文件
 /// └── Videos/     # 视频文件
 /// ```
-final class FileStorageManager {
+///
+/// # 线程安全
+/// 使用 actor 隔离保证并发安全
+actor FileStorageManager {
 
     // MARK: - Singleton
 
-    nonisolated(unsafe) static let shared = FileStorageManager()
+    static let shared = FileStorageManager()
 
     // MARK: - Properties
 
@@ -30,32 +33,86 @@ final class FileStorageManager {
 
     private(set) lazy var voiceDirectory: URL = {
         let url = baseDirectory.appendingPathComponent("Voice", isDirectory: true)
-        try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            print("Failed to create voice directory: \(error)")
+        }
         return url
     }()
 
     private(set) lazy var imageDirectory: URL = {
         let url = baseDirectory.appendingPathComponent("Images", isDirectory: true)
-        try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            print("Failed to create image directory: \(error)")
+        }
         return url
     }()
 
     private(set) lazy var videoDirectory: URL = {
         let url = baseDirectory.appendingPathComponent("Videos", isDirectory: true)
-        try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            print("Failed to create video directory: \(error)")
+        }
         return url
     }()
+
+    // MARK: - Nonisolated Directory Access (for Codable)
+
+    /// 获取语音目录路径（nonisolated，用于 Codable 解码）
+    nonisolated static func getVoiceDirectory() -> URL {
+        guard let documentsURL = FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask).first else {
+            fatalError("Failed to get documents directory")
+        }
+        return documentsURL
+            .appendingPathComponent("VoiceIM", isDirectory: true)
+            .appendingPathComponent("Voice", isDirectory: true)
+    }
+
+    /// 获取图片目录路径（nonisolated，用于 Codable 解码）
+    nonisolated static func getImageDirectory() -> URL {
+        guard let documentsURL = FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask).first else {
+            fatalError("Failed to get documents directory")
+        }
+        return documentsURL
+            .appendingPathComponent("VoiceIM", isDirectory: true)
+            .appendingPathComponent("Images", isDirectory: true)
+    }
+
+    /// 获取视频目录路径（nonisolated，用于 Codable 解码）
+    nonisolated static func getVideoDirectory() -> URL {
+        guard let documentsURL = FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask).first else {
+            fatalError("Failed to get documents directory")
+        }
+        return documentsURL
+            .appendingPathComponent("VoiceIM", isDirectory: true)
+            .appendingPathComponent("Videos", isDirectory: true)
+    }
 
     // MARK: - Init
 
     private init() {
         // 使用 Documents 目录作为基础目录
-        self.baseDirectory = fileManager
-            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+        guard let documentsURL = fileManager
+            .urls(for: .documentDirectory, in: .userDomainMask).first else {
+            fatalError("Failed to get documents directory")
+        }
+        self.baseDirectory = documentsURL
             .appendingPathComponent("VoiceIM", isDirectory: true)
 
         // 创建基础目录
-        try? fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+        } catch {
+            print("Failed to create base directory: \(error)")
+        }
     }
 
     /// 测试用初始化方法（使用临时目录）
@@ -64,11 +121,18 @@ final class FileStorageManager {
             self.baseDirectory = fileManager.temporaryDirectory
                 .appendingPathComponent("VoiceIMTests-\(UUID().uuidString)", isDirectory: true)
         } else {
-            self.baseDirectory = fileManager
-                .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            guard let documentsURL = fileManager
+                .urls(for: .documentDirectory, in: .userDomainMask).first else {
+                fatalError("Failed to get documents directory")
+            }
+            self.baseDirectory = documentsURL
                 .appendingPathComponent("VoiceIM", isDirectory: true)
         }
-        try? fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+        } catch {
+            print("Failed to create base directory: \(error)")
+        }
     }
 
     // MARK: - File Operations

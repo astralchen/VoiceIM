@@ -182,6 +182,7 @@ extension PhotoPickerManager: PHPickerViewControllerDelegate {
 
         Task { @MainActor in
             picker.dismiss(animated: true)
+            picker.delegate = nil  // 清理 delegate 引用
 
             guard let continuation = self.pickerContinuation else { return }
             self.pickerContinuation = nil

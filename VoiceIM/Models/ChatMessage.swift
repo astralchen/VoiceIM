@@ -271,7 +271,7 @@ extension ChatMessage.Kind {
 
             // 根据文件名重新构建完整路径
             let localURL = fileName.map {
-                FileStorageManager.shared.voiceDirectory.appendingPathComponent($0)
+                FileStorageManager.getVoiceDirectory().appendingPathComponent($0)
             }
 
             self = .voice(localURL: localURL, remoteURL: remoteURL, duration: duration)
@@ -281,7 +281,7 @@ extension ChatMessage.Kind {
             let remoteURL = try container.decodeIfPresent(URL.self, forKey: .remoteURL)
 
             let localURL = fileName.map {
-                FileStorageManager.shared.imageDirectory.appendingPathComponent($0)
+                FileStorageManager.getImageDirectory().appendingPathComponent($0)
             }
 
             self = .image(localURL: localURL, remoteURL: remoteURL)
@@ -292,7 +292,7 @@ extension ChatMessage.Kind {
             let duration = try container.decode(TimeInterval.self, forKey: .duration)
 
             let localURL = fileName.map {
-                FileStorageManager.shared.videoDirectory.appendingPathComponent($0)
+                FileStorageManager.getVideoDirectory().appendingPathComponent($0)
             }
 
             self = .video(localURL: localURL, remoteURL: remoteURL, duration: duration)

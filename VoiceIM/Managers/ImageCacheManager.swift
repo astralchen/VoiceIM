@@ -63,6 +63,9 @@ final class ImageCacheManager {
     /// 磁盘操作 actor（保证并发安全）
     private let diskActor = DiskCacheActor()
 
+    /// 内存警告观察者
+    private var memoryWarningObserver: NSObjectProtocol?
+
     // MARK: - Init
 
     private init() {
@@ -72,16 +75,28 @@ final class ImageCacheManager {
         tempMemoryCache.countLimit = 10
         tempMemoryCache.totalCostLimit = 20 * 1024 * 1024  // 20 MB
 
-        let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        guard let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            fatalError("Failed to get caches directory")
+        }
         diskCacheURL = cacheDir.appendingPathComponent("ImageCache", isDirectory: true)
-        try? FileManager.default.createDirectory(at: diskCacheURL, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: diskCacheURL, withIntermediateDirectories: true)
+        } catch {
+            print("Failed to create image cache directory: \(error)")
+        }
 
-        NotificationCenter.default.addObserver(
+        memoryWarningObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             self?.clearMemoryCache()
+        }
+    }
+
+    deinit {
+        if let observer = memoryWarningObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 

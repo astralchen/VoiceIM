@@ -82,15 +82,14 @@ final class InputCoordinator {
     /// 初始化输入协调器
     ///
     /// 使用依赖注入模式，支持替换录音器、播放器和相册选择器实现。
-    /// 默认参数使用单例，保持向后兼容，生产代码无需修改。
     ///
     /// - Parameters:
-    ///   - recorder: 录音服务（默认使用 VoiceRecordManager.shared）
-    ///   - player: 播放服务（默认使用 VoicePlaybackManager.shared）
-    ///   - photoPicker: 相册选择服务（默认使用 PhotoPickerManager.shared）
-    init(recorder: AudioRecordService = VoiceRecordManager.shared,
-         player: AudioPlaybackService = VoicePlaybackManager.shared,
-         photoPicker: PhotoPickerService = PhotoPickerManager.shared) {
+    ///   - recorder: 录音服务
+    ///   - player: 播放服务
+    ///   - photoPicker: 相册选择服务
+    init(recorder: AudioRecordService,
+         player: AudioPlaybackService,
+         photoPicker: PhotoPickerService) {
         self.recorder = recorder
         self.player = player
         self.photoPicker = photoPicker

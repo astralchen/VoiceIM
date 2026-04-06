@@ -38,8 +38,9 @@ final class ChatViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let repository: MessageRepository
-    let playbackService: AudioPlaybackService  // 改为 internal，供 ViewController 使用
-    private let recordService: AudioRecordService
+    let playbackService: AudioPlaybackService  // internal，供 ViewController 使用
+    let recordService: AudioRecordService  // internal，供 ViewController 使用
+    let photoPickerService: PhotoPickerService  // internal，供 ViewController 使用
     private let logger: Logger
 
     // MARK: - Private Properties
@@ -52,11 +53,13 @@ final class ChatViewModel: ObservableObject {
         repository: MessageRepository,
         playbackService: AudioPlaybackService,
         recordService: AudioRecordService,
+        photoPickerService: PhotoPickerService,
         logger: Logger = VoiceIM.logger
     ) {
         self.repository = repository
         self.playbackService = playbackService
         self.recordService = recordService
+        self.photoPickerService = photoPickerService
         self.logger = logger
 
         setupPlaybackCallbacks()
@@ -67,41 +70,43 @@ final class ChatViewModel: ObservableObject {
 
     /// 加载消息列表
     func loadMessages() {
-        do {
-            messages = try repository.loadMessages()
-            logger.info("Loaded \(messages.count) messages")
+        Task {
+            do {
+                messages = try await repository.loadMessages()
+                logger.info("Loaded \(messages.count) messages")
 
-            // 调试：检查每条消息的文件路径
-            for message in messages {
-                switch message.kind {
-                case .voice(let localURL, _, _):
-                    logger.debug("Voice message: \(message.id)")
-                    logger.debug("  localURL: \(String(describing: localURL))")
-                    if let url = localURL {
-                        let exists = FileManager.default.fileExists(atPath: url.path)
-                        logger.debug("  file exists: \(exists)")
+                // 调试：检查每条消息的文件路径
+                for message in messages {
+                    switch message.kind {
+                    case .voice(let localURL, _, _):
+                        logger.debug("Voice message: \(message.id)")
+                        logger.debug("  localURL: \(String(describing: localURL))")
+                        if let url = localURL {
+                            let exists = FileManager.default.fileExists(atPath: url.path)
+                            logger.debug("  file exists: \(exists)")
+                        }
+                    case .image(let localURL, _):
+                        logger.debug("Image message: \(message.id)")
+                        logger.debug("  localURL: \(String(describing: localURL))")
+                        if let url = localURL {
+                            let exists = FileManager.default.fileExists(atPath: url.path)
+                            logger.debug("  file exists: \(exists)")
+                        }
+                    case .video(let localURL, _, _):
+                        logger.debug("Video message: \(message.id)")
+                        logger.debug("  localURL: \(String(describing: localURL))")
+                        if let url = localURL {
+                            let exists = FileManager.default.fileExists(atPath: url.path)
+                            logger.debug("  file exists: \(exists)")
+                        }
+                    default:
+                        break
                     }
-                case .image(let localURL, _):
-                    logger.debug("Image message: \(message.id)")
-                    logger.debug("  localURL: \(String(describing: localURL))")
-                    if let url = localURL {
-                        let exists = FileManager.default.fileExists(atPath: url.path)
-                        logger.debug("  file exists: \(exists)")
-                    }
-                case .video(let localURL, _, _):
-                    logger.debug("Video message: \(message.id)")
-                    logger.debug("  localURL: \(String(describing: localURL))")
-                    if let url = localURL {
-                        let exists = FileManager.default.fileExists(atPath: url.path)
-                        logger.debug("  file exists: \(exists)")
-                    }
-                default:
-                    break
                 }
+            } catch {
+                logger.error("Failed to load messages: \(error)")
+                self.error = error as? ChatError ?? .unknown(error)
             }
-        } catch {
-            logger.error("Failed to load messages: \(error)")
-            self.error = error as? ChatError ?? .unknown(error)
         }
     }
 
@@ -109,16 +114,18 @@ final class ChatViewModel: ObservableObject {
     ///
     /// - Parameter text: 文本内容
     func sendTextMessage(_ text: String) {
-        do {
-            let message = try repository.sendTextMessage(text: text)
-            messages.append(message)
-            logger.info("Sent text message: \(message.id)")
+        Task {
+            do {
+                let message = try await repository.sendTextMessage(text: text)
+                messages.append(message)
+                logger.info("Sent text message: \(message.id)")
 
-            // 发送到服务器
-            sendMessageToServer(id: message.id)
-        } catch {
-            logger.error("Failed to send text message: \(error)")
-            self.error = error as? ChatError ?? .unknown(error)
+                // 发送到服务器
+                sendMessageToServer(id: message.id)
+            } catch {
+                logger.error("Failed to send text message: \(error)")
+                self.error = error as? ChatError ?? .unknown(error)
+            }
         }
     }
 
@@ -128,16 +135,18 @@ final class ChatViewModel: ObservableObject {
     ///   - url: 录音文件 URL
     ///   - duration: 录音时长
     func sendVoiceMessage(url: URL, duration: TimeInterval) {
-        do {
-            let message = try repository.sendVoiceMessage(tempURL: url, duration: duration)
-            messages.append(message)
-            logger.info("Sent voice message: \(message.id)")
+        Task {
+            do {
+                let message = try await repository.sendVoiceMessage(tempURL: url, duration: duration)
+                messages.append(message)
+                logger.info("Sent voice message: \(message.id)")
 
-            // 发送到服务器
-            sendMessageToServer(id: message.id)
-        } catch {
-            logger.error("Failed to send voice message: \(error)")
-            self.error = error as? ChatError ?? .unknown(error)
+                // 发送到服务器
+                sendMessageToServer(id: message.id)
+            } catch {
+                logger.error("Failed to send voice message: \(error)")
+                self.error = error as? ChatError ?? .unknown(error)
+            }
         }
     }
 
@@ -188,16 +197,18 @@ final class ChatViewModel: ObservableObject {
     ///   - longitude: 经度
     ///   - address: 地址
     func sendLocationMessage(latitude: Double, longitude: Double, address: String?) {
-        do {
-            let message = try repository.sendLocationMessage(latitude: latitude, longitude: longitude, address: address)
-            messages.append(message)
-            logger.info("Sent location message: \(message.id)")
+        Task {
+            do {
+                let message = try await repository.sendLocationMessage(latitude: latitude, longitude: longitude, address: address)
+                messages.append(message)
+                logger.info("Sent location message: \(message.id)")
 
-            // 发送到服务器
-            sendMessageToServer(id: message.id)
-        } catch {
-            logger.error("Failed to send location message: \(error)")
-            self.error = error as? ChatError ?? .unknown(error)
+                // 发送到服务器
+                sendMessageToServer(id: message.id)
+            } catch {
+                logger.error("Failed to send location message: \(error)")
+                self.error = error as? ChatError ?? .unknown(error)
+            }
         }
     }
 
@@ -205,13 +216,15 @@ final class ChatViewModel: ObservableObject {
     ///
     /// - Parameter id: 消息 ID
     func deleteMessage(id: UUID) {
-        do {
-            try repository.deleteMessage(id: id)
-            messages.removeAll { $0.id == id }
-            logger.info("Deleted message: \(id)")
-        } catch {
-            logger.error("Failed to delete message: \(error)")
-            self.error = error as? ChatError ?? .unknown(error)
+        Task {
+            do {
+                try await repository.deleteMessage(id: id)
+                messages.removeAll { $0.id == id }
+                logger.info("Deleted message: \(id)")
+            } catch {
+                logger.error("Failed to delete message: \(error)")
+                self.error = error as? ChatError ?? .unknown(error)
+            }
         }
     }
 
@@ -219,25 +232,27 @@ final class ChatViewModel: ObservableObject {
     ///
     /// - Parameter id: 消息 ID
     func recallMessage(id: UUID) {
-        do {
-            try repository.recallMessage(id: id)
+        Task {
+            do {
+                try await repository.recallMessage(id: id)
 
-            // 更新本地消息列表
-            if let index = messages.firstIndex(where: { $0.id == id }) {
-                let originalText: String?
-                if case .text(let content) = messages[index].kind {
-                    originalText = content
-                } else {
-                    originalText = nil
+                // 更新本地消息列表
+                if let index = messages.firstIndex(where: { $0.id == id }) {
+                    let originalText: String?
+                    if case .text(let content) = messages[index].kind {
+                        originalText = content
+                    } else {
+                        originalText = nil
+                    }
+
+                    messages[index].kind = .recalled(originalText: originalText)
                 }
 
-                messages[index].kind = .recalled(originalText: originalText)
+                logger.info("Recalled message: \(id)")
+            } catch {
+                logger.error("Failed to recall message: \(error)")
+                self.error = error as? ChatError ?? .unknown(error)
             }
-
-            logger.info("Recalled message: \(id)")
-        } catch {
-            logger.error("Failed to recall message: \(error)")
-            self.error = error as? ChatError ?? .unknown(error)
         }
     }
 
@@ -278,17 +293,19 @@ final class ChatViewModel: ObservableObject {
     ///
     /// - Parameter id: 消息 ID
     func markAsPlayed(id: UUID) {
-        do {
-            try repository.markAsPlayed(id: id)
+        Task {
+            do {
+                try await repository.markAsPlayed(id: id)
 
-            // 更新本地消息列表
-            if let index = messages.firstIndex(where: { $0.id == id }) {
-                messages[index].isPlayed = true
+                // 更新本地消息列表
+                if let index = messages.firstIndex(where: { $0.id == id }) {
+                    messages[index].isPlayed = true
+                }
+
+                logger.debug("Marked message \(id) as played")
+            } catch {
+                logger.error("Failed to mark message as played: \(error)")
             }
-
-            logger.debug("Marked message \(id) as played")
-        } catch {
-            logger.error("Failed to mark message as played: \(error)")
         }
     }
 
@@ -360,7 +377,7 @@ final class ChatViewModel: ObservableObject {
                 // let response = try await networkService.sendMessage(id: id)
 
                 // 临时实现：直接标记为已送达
-                try repository.updateSendStatus(id: id, status: .delivered)
+                try await repository.updateSendStatus(id: id, status: .delivered)
                 if let index = messages.firstIndex(where: { $0.id == id }) {
                     messages[index].sendStatus = .delivered
                 }
@@ -368,7 +385,7 @@ final class ChatViewModel: ObservableObject {
                 logger.info("Message sent successfully: \(id)")
             } catch {
                 // 发送失败，标记为失败状态
-                try? repository.updateSendStatus(id: id, status: .failed)
+                try? await repository.updateSendStatus(id: id, status: .failed)
                 if let index = messages.firstIndex(where: { $0.id == id }) {
                     messages[index].sendStatus = .failed
                 }

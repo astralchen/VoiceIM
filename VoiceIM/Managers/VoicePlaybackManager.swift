@@ -59,6 +59,7 @@ final class VoicePlaybackManager: NSObject, AudioPlaybackService {
     func stopCurrent() {
         progressTimer?.invalidate()
         progressTimer = nil
+        player?.delegate = nil  // 清理 delegate 引用
         player?.stop()
         player = nil
         if let id = playingID {
@@ -138,8 +139,12 @@ extension VoicePlaybackManager: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            if !flag {
+                print("Playback failed")
+            }
             self.progressTimer?.invalidate()
             self.progressTimer = nil
+            self.player?.delegate = nil  // 清理 delegate 引用
             self.player = nil
             if let id = self.playingID {
                 self.playingID = nil

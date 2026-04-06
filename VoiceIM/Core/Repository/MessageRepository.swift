@@ -37,9 +37,9 @@ final class MessageRepository {
     ///
     /// - Returns: 消息列表
     /// - Throws: ChatError
-    func loadMessages() throws -> [ChatMessage] {
+    func loadMessages() async throws -> [ChatMessage] {
         do {
-            let messages = try storage.load()
+            let messages = try await storage.load()
             logger.info("Loaded \(messages.count) messages from storage")
             return messages
         } catch {
@@ -55,9 +55,9 @@ final class MessageRepository {
     ///   - sender: 发送者
     /// - Returns: 创建的消息
     /// - Throws: ChatError
-    func sendTextMessage(text: String, sender: Sender = .me) throws -> ChatMessage {
+    func sendTextMessage(text: String, sender: Sender = .me) async throws -> ChatMessage {
         let message = ChatMessage.text(text, sender: sender, sentAt: Date())
-        try storage.append(message)
+        try await storage.append(message)
         logger.info("Sent text message: \(message.id)")
         return message
     }
@@ -70,17 +70,17 @@ final class MessageRepository {
     ///   - sender: 发送者
     /// - Returns: 创建的消息
     /// - Throws: ChatError
-    func sendVoiceMessage(tempURL: URL, duration: TimeInterval, sender: Sender = .me) throws -> ChatMessage {
+    func sendVoiceMessage(tempURL: URL, duration: TimeInterval, sender: Sender = .me) async throws -> ChatMessage {
         do {
             // 保存录音文件到永久存储
-            let permanentURL = try fileStorage.saveVoiceFile(from: tempURL)
+            let permanentURL = try await fileStorage.saveVoiceFile(from: tempURL)
 
             // 创建消息
             let message = ChatMessage.voice(localURL: permanentURL, duration: duration, sentAt: Date())
-            try storage.append(message)
+            try await storage.append(message)
 
             // 删除临时文件
-            try? fileStorage.deleteFile(at: tempURL)
+            try? await fileStorage.deleteFile(at: tempURL)
 
             logger.info("Sent voice message: \(message.id), duration: \(duration)s")
             return message
@@ -110,11 +110,11 @@ final class MessageRepository {
             logger.info("💾 Saved to cache: \(cacheURL.lastPathComponent)")
 
             // 删除临时文件
-            try? fileStorage.deleteFile(at: tempURL)
+            try? await fileStorage.deleteFile(at: tempURL)
 
             // 创建消息（使用磁盘缓存路径）
             let message = ChatMessage.image(localURL: cacheURL, sentAt: Date())
-            try storage.append(message)
+            try await storage.append(message)
 
             logger.info("Sent image message: \(message.id)")
             return message
@@ -145,7 +145,7 @@ final class MessageRepository {
 
             // 创建消息（使用视频缓存路径）
             let message = ChatMessage.video(localURL: cacheURL, duration: duration, sentAt: Date())
-            try storage.append(message)
+            try await storage.append(message)
 
             logger.info("Sent video message: \(message.id), duration: \(duration)s")
             return message
@@ -164,9 +164,9 @@ final class MessageRepository {
     ///   - sender: 发送者
     /// - Returns: 创建的消息
     /// - Throws: ChatError
-    func sendLocationMessage(latitude: Double, longitude: Double, address: String?, sender: Sender = .me) throws -> ChatMessage {
+    func sendLocationMessage(latitude: Double, longitude: Double, address: String?, sender: Sender = .me) async throws -> ChatMessage {
         let message = ChatMessage.location(latitude: latitude, longitude: longitude, address: address, sentAt: Date())
-        try storage.append(message)
+        try await storage.append(message)
         logger.info("Sent location message: \(message.id)")
         return message
     }
@@ -175,21 +175,21 @@ final class MessageRepository {
     ///
     /// - Parameter id: 消息 ID
     /// - Throws: ChatError
-    func deleteMessage(id: UUID) throws {
+    func deleteMessage(id: UUID) async throws {
         do {
             // 加载消息以获取文件 URL
-            let messages = try storage.load()
+            let messages = try await storage.load()
             guard let message = messages.first(where: { $0.id == id }) else {
                 throw ChatError.messageNotFound(id: id)
             }
 
             // 删除关联的文件
             if let localURL = message.localURL {
-                try? fileStorage.deleteFile(at: localURL)
+                try? await fileStorage.deleteFile(at: localURL)
             }
 
             // 从存储中删除消息
-            try storage.delete(id: id)
+            try await storage.delete(id: id)
 
             logger.info("Deleted message: \(id)")
         } catch let error as ChatError {
@@ -205,10 +205,10 @@ final class MessageRepository {
     ///
     /// - Parameter id: 消息 ID
     /// - Throws: ChatError
-    func recallMessage(id: UUID) throws {
+    func recallMessage(id: UUID) async throws {
         do {
             // 加载消息
-            let messages = try storage.load()
+            let messages = try await storage.load()
             guard let message = messages.first(where: { $0.id == id }) else {
                 throw ChatError.messageNotFound(id: id)
             }
@@ -234,7 +234,7 @@ final class MessageRepository {
 
             // 删除关联的文件
             if let localURL = message.localURL {
-                try? fileStorage.deleteFile(at: localURL)
+                try? await fileStorage.deleteFile(at: localURL)
             }
 
             // 创建撤回消息
@@ -242,7 +242,7 @@ final class MessageRepository {
             recalledMessage.kind = .recalled(originalText: originalText)
 
             // 更新存储
-            try storage.update(recalledMessage)
+            try await storage.update(recalledMessage)
 
             logger.info("Recalled message: \(id)")
         } catch let error as ChatError {
@@ -260,15 +260,15 @@ final class MessageRepository {
     ///   - id: 消息 ID
     ///   - status: 新的发送状态
     /// - Throws: ChatError
-    func updateSendStatus(id: UUID, status: ChatMessage.SendStatus) throws {
+    func updateSendStatus(id: UUID, status: ChatMessage.SendStatus) async throws {
         do {
-            let messages = try storage.load()
+            let messages = try await storage.load()
             guard var message = messages.first(where: { $0.id == id }) else {
                 throw ChatError.messageNotFound(id: id)
             }
 
             message.sendStatus = status
-            try storage.update(message)
+            try await storage.update(message)
 
             logger.debug("Updated message \(id) status to \(status)")
         } catch let error as ChatError {
@@ -283,15 +283,15 @@ final class MessageRepository {
     ///
     /// - Parameter id: 消息 ID
     /// - Throws: ChatError
-    func markAsPlayed(id: UUID) throws {
+    func markAsPlayed(id: UUID) async throws {
         do {
-            let messages = try storage.load()
+            let messages = try await storage.load()
             guard var message = messages.first(where: { $0.id == id }) else {
                 throw ChatError.messageNotFound(id: id)
             }
 
             message.isPlayed = true
-            try storage.update(message)
+            try await storage.update(message)
 
             logger.debug("Marked message \(id) as played")
         } catch let error as ChatError {
@@ -305,11 +305,11 @@ final class MessageRepository {
     /// 清理孤立文件
     ///
     /// - Returns: 清理的文件数量
-    func cleanOrphanedFiles() -> Int {
+    func cleanOrphanedFiles() async -> Int {
         do {
-            let messages = try storage.load()
+            let messages = try await storage.load()
             let referencedURLs = Set(messages.compactMap { $0.localURL })
-            let cleanedCount = fileStorage.cleanOrphanedFiles(referencedURLs: referencedURLs)
+            let cleanedCount = await fileStorage.cleanOrphanedFiles(referencedURLs: referencedURLs)
 
             logger.info("Cleaned \(cleanedCount) orphaned files")
             return cleanedCount

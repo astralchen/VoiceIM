@@ -24,11 +24,14 @@ import Foundation
 ///   ]
 /// }
 /// ```
-final class MessageStorage {
+///
+/// # 线程安全
+/// 使用 actor 隔离保证并发安全
+actor MessageStorage {
 
     // MARK: - Singleton
 
-    nonisolated(unsafe) static let shared = MessageStorage()
+    static let shared = MessageStorage()
 
     // MARK: - Properties
 
@@ -41,12 +44,18 @@ final class MessageStorage {
 
     private init() {
         // 存储路径：Documents/VoiceIM/messages.json
-        let documentsURL = fileManager
-            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+        guard let documentsURL = fileManager
+            .urls(for: .documentDirectory, in: .userDomainMask).first else {
+            fatalError("Failed to get documents directory")
+        }
         let baseURL = documentsURL.appendingPathComponent("VoiceIM", isDirectory: true)
 
         // 创建目录
-        try? fileManager.createDirectory(at: baseURL, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: baseURL, withIntermediateDirectories: true)
+        } catch {
+            print("Failed to create storage directory: \(error)")
+        }
 
         self.storageURL = baseURL.appendingPathComponent("messages.json")
 

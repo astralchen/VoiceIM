@@ -93,6 +93,7 @@ final class VoiceRecordManager: NSObject, AudioRecordService {
     /// 停止录音并返回文件 URL
     func stopRecording() -> URL? {
         guard let rec = recorder else { return nil }
+        rec.delegate = nil  // 清理 delegate 引用
         let url = rec.url
         rec.stop()
         recorder = nil
@@ -103,6 +104,7 @@ final class VoiceRecordManager: NSObject, AudioRecordService {
     /// 取消录音并删除临时文件
     func cancelRecording() {
         guard let rec = recorder else { return }
+        rec.delegate = nil  // 清理 delegate 引用
         let url = rec.url
         rec.stop()
         try? FileManager.default.removeItem(at: url)
@@ -114,6 +116,19 @@ final class VoiceRecordManager: NSObject, AudioRecordService {
 // MARK: - AVAudioRecorderDelegate
 
 extension VoiceRecordManager: AVAudioRecorderDelegate {
-    nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {}
-    nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {}
+    nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        if !flag {
+            Task { @MainActor in
+                print("Recording finished with error")
+            }
+        }
+    }
+
+    nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
+        Task { @MainActor in
+            if let error = error {
+                print("Recording encode error: \(error)")
+            }
+        }
+    }
 }

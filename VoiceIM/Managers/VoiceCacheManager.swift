@@ -10,11 +10,17 @@ actor VoiceCacheManager: FileCacheService {
     private var inFlight: [URL: Task<URL, Error>] = [:]
 
     private init() {
-        let base = FileManager.default
-            .urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        guard let base = FileManager.default
+            .urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            fatalError("Failed to get caches directory")
+        }
         cacheDir = base.appendingPathComponent("IMVoiceCache", isDirectory: true)
-        try? FileManager.default.createDirectory(
-            at: cacheDir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(
+                at: cacheDir, withIntermediateDirectories: true)
+        } catch {
+            print("Failed to create voice cache directory: \(error)")
+        }
     }
 
     // MARK: - 公共接口
