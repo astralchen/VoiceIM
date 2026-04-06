@@ -69,6 +69,24 @@ struct ChatMessage: Sendable, Hashable, Codable {
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 
+    // MARK: - 初始化
+
+    init(
+        id: UUID,
+        kind: Kind,
+        sender: Sender,
+        sentAt: Date,
+        isPlayed: Bool,
+        sendStatus: SendStatus
+    ) {
+        self.id = id
+        self.kind = kind
+        self.sender = sender
+        self.sentAt = sentAt
+        self.isPlayed = isPlayed
+        self.sendStatus = sendStatus
+    }
+
     // MARK: - 工厂方法
 
     /// 本地录制的语音消息（发送方固定为自己）
@@ -92,11 +110,30 @@ struct ChatMessage: Sendable, Hashable, Codable {
     }
 
     /// 文本消息（无未读概念，isPlayed 固定 true）
-    static func text(_ content: String,
-                     sender: Sender = .me,
-                     sentAt: Date = Date()) -> Self {
-        ChatMessage(id: UUID(), kind: .text(content),
-                    sender: sender, sentAt: sentAt, isPlayed: true, sendStatus: sender.id == Sender.me.id ? .sending : .delivered)
+    ///
+    /// - Parameter sendStatus: 仅对自己发送的消息有效；为 `nil` 时自己为 `.sending`（刚发出）、对方固定 `.delivered`。历史/同步数据应传入 `.delivered`（或 `.read`）。
+    static func text(
+        _ content: String,
+        sender: Sender = .me,
+        sentAt: Date = Date(),
+        sendStatus: SendStatus? = nil
+    ) -> Self {
+        let resolved: SendStatus
+        if sender.id != Sender.me.id {
+            resolved = .delivered
+        } else if let sendStatus {
+            resolved = sendStatus
+        } else {
+            resolved = .sending
+        }
+        return ChatMessage(
+            id: UUID(),
+            kind: .text(content),
+            sender: sender,
+            sentAt: sentAt,
+            isPlayed: true,
+            sendStatus: resolved
+        )
     }
 
     /// 本地图片消息（发送方固定为自己）

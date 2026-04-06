@@ -45,6 +45,12 @@ struct MessageCellDependencies {
     /// 查询某条消息当前播放进度（0~1）
     let currentProgress: (UUID) -> Float
 
+    /// 正在播放时由解码器得到的总时长（秒）；未播放或非当前消息为 0
+    let playbackDuration: (UUID) -> TimeInterval
+
+    /// 正在播放时由播放器计算的剩余时长（秒）；未播放或非当前消息为 0
+    let playbackRemaining: (UUID) -> TimeInterval
+
     /// 语音 Cell 的事件委托；文本等其他 Cell 忽略此字段
     weak var voiceDelegate: VoiceMessageCellDelegate?
 

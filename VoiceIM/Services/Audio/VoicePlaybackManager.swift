@@ -81,6 +81,16 @@ final class VoicePlaybackManager: NSObject, AudioPlaybackService {
         return Float(p.currentTime / p.duration)
     }
 
+    func playbackDuration(for id: UUID) -> TimeInterval {
+        guard playingID == id, let p = player else { return 0 }
+        return p.duration
+    }
+
+    func playbackRemaining(for id: UUID) -> TimeInterval {
+        guard playingID == id, let p = player, p.duration > 0 else { return 0 }
+        return max(0, p.duration - p.currentTime)
+    }
+
     /// 跳转到指定进度（0~1）
     func seek(to progress: Float) {
         guard let p = player, p.duration > 0 else { return }

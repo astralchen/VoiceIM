@@ -38,6 +38,10 @@ struct MessageActionHandlerTests {
             0.5
         }
 
+        func playbackDuration(for id: UUID) -> TimeInterval { 0 }
+
+        func playbackRemaining(for id: UUID) -> TimeInterval { 0 }
+
         func seek(to progress: Float) {}
     }
 

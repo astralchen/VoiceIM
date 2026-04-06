@@ -20,6 +20,9 @@ final class MessagePreloader {
 
     // MARK: - Properties
 
+    private let imageCache: ImageCacheManager
+    private let videoCache: VideoCacheManager
+
     /// 预加载窗口大小（可见范围前后各预加载多少条）
     private let preloadWindow = 5
 
@@ -31,7 +34,14 @@ final class MessagePreloader {
 
     // MARK: - Init
 
-    private init() {}
+    /// - Note: 默认参数不能写 `= .shared`（Swift 6 下默认实参非隔离，无法引用 `@MainActor` 的 `ImageCacheManager.shared`），故用 `nil` 在 init 体内回退。
+    init(
+        imageCache: ImageCacheManager? = nil,
+        videoCache: VideoCacheManager? = nil
+    ) {
+        self.imageCache = imageCache ?? ImageCacheManager.shared
+        self.videoCache = videoCache ?? VideoCacheManager.shared
+    }
 
     // MARK: - Public API
 
@@ -131,12 +141,12 @@ final class MessagePreloader {
             // 标记为已预加载
             preloadedMessageIDs.insert(message.id)
 
-            // 预加载图片消息
+            // 预加载图片消息（`Task` 脱开当前调用栈，避免在滚动回调里串行 await 阻塞 UI）
             if case .image(let localURL, _) = message.kind,
                let imageURL = localURL {
                 Task {
                     let targetSize = CGSize(width: 250, height: 350)
-                    ImageCacheManager.shared.preloadImage(from: imageURL, targetSize: targetSize)
+                    imageCache.preloadImage(from: imageURL, targetSize: targetSize)
                     VoiceIM.logger.debug("Preloaded image for message: \(message.id)")
                 }
             }
@@ -145,7 +155,7 @@ final class MessagePreloader {
             if case .video(let localURL, _, _) = message.kind,
                let videoURL = localURL {
                 Task {
-                    _ = await VideoCacheManager.shared.loadThumbnail(from: videoURL)
+                    _ = await videoCache.loadThumbnail(from: videoURL)
                     VoiceIM.logger.debug("Preloaded video thumbnail for message: \(message.id)")
                 }
             }

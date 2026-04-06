@@ -1,77 +1,31 @@
 import Foundation
 
-/// 语音文件下载缓存管理器（Actor 保证线程安全）
+/// 远程语音文件下载缓存（本地录音文件仍由 `FileStorageManager` 保存在 Documents）
 actor VoiceCacheManager: FileCacheService {
 
     static let shared = VoiceCacheManager()
 
-    private let cacheDir: URL
-
-    /// 任务去重器（避免重复下载）
-    private let deduplicator = TaskDeduplicator<URL, URL>()
+    private let voiceDirectory: URL
 
     private init() {
-        do {
-            cacheDir = try CacheDirectoryManager.createCacheDirectory(named: "IMVoiceCache")
-        } catch {
-            // 降级处理：使用临时目录
-            cacheDir = FileManager.default.temporaryDirectory
-                .appendingPathComponent("IMVoiceCache", isDirectory: true)
-            try? FileManager.default.createDirectory(
-                at: cacheDir,
-                withIntermediateDirectories: true
-            )
-            print("Failed to create voice cache directory, using temp: \(error)")
+        // 与 `FileStorageManager` 中「用户录音」Documents 路径分离；此处仅缓存**可再下载**的远程语音
+        if let dir = try? ChatCacheBucket.voiceRemote.ensureDirectory() {
+            voiceDirectory = dir
+        } else {
+            let fallback = FileManager.default.temporaryDirectory
+                .appendingPathComponent("VoiceIM/IMVoiceCache", isDirectory: true)
+            try? FileManager.default.createDirectory(at: fallback, withIntermediateDirectories: true)
+            print("语音远程缓存目录创建失败，已使用临时目录")
+            voiceDirectory = fallback
         }
     }
 
-    // MARK: - 公共接口
-
-    /// 解析语音 URL：本地缓存已存在直接返回，否则下载后缓存
+    /// 实现 `FileCacheService`：落盘目录固定为 `ChatCacheBucket.voiceRemote`，与 `ChatViewModel` 注入的协议一致，便于测试替换。
     func resolve(_ remoteURL: URL) async throws -> URL {
-        let dest = cacheURL(for: remoteURL)
-
-        // 已缓存，直接返回
-        if FileManager.default.fileExists(atPath: dest.path) {
-            return dest
-        }
-
-        // 使用去重器执行下载
-        return try await deduplicator.deduplicate(key: remoteURL) {
-            try await Self.download(from: remoteURL, to: dest)
-        }
-    }
-
-    // MARK: - 私有
-
-    private static func download(from remote: URL, to dest: URL) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
-            let task = URLSession.shared.downloadTask(with: remote) { tmpURL, _, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                guard let tmpURL = tmpURL else {
-                    continuation.resume(throwing: URLError(.unknown))
-                    return
-                }
-                do {
-                    if FileManager.default.fileExists(atPath: dest.path) {
-                        try FileManager.default.removeItem(at: dest)
-                    }
-                    try FileManager.default.moveItem(at: tmpURL, to: dest)
-                    continuation.resume(returning: dest)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-            task.resume()
-        }
-    }
-
-    private func cacheURL(for remote: URL) -> URL {
-        // 使用稳定哈希生成文件名
-        let fileName = StableHash.fileName(for: remote, defaultExtension: "m4a")
-        return cacheDir.appendingPathComponent(fileName)
+        try await RemoteFileCache.shared.localFile(
+            for: remoteURL,
+            defaultExtension: "m4a",
+            cacheDirectory: voiceDirectory
+        )
     }
 }

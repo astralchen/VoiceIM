@@ -42,6 +42,8 @@ final class ChatViewModel: ObservableObject {
     let recordService: AudioRecordService  // internal，供 ViewController 使用
     let photoPickerService: PhotoPickerService  // internal，供 ViewController 使用
     let errorHandler: ErrorHandler  // internal，供 ViewController 使用
+    /// 远程语音落盘缓存（本地文件存在时不会调用）
+    private let voiceFileCache: any FileCacheService
     private let logger: Logger
 
     // MARK: - Private Properties
@@ -50,12 +52,14 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - Init
 
+    /// - Parameter voiceFileCache: 仅用于「仅有 `remoteURL`」的语音：`resolve` 下载到缓存目录后再交给 `playbackService`。由 `AppDependencies.makeChatViewModel` 传入 `VoiceCacheManager`。
     init(
         repository: MessageRepository,
         playbackService: AudioPlaybackService,
         recordService: AudioRecordService,
         photoPickerService: PhotoPickerService,
         errorHandler: ErrorHandler,
+        voiceFileCache: any FileCacheService = VoiceCacheManager.shared,
         logger: Logger = VoiceIM.logger
     ) {
         self.repository = repository
@@ -63,6 +67,7 @@ final class ChatViewModel: ObservableObject {
         self.recordService = recordService
         self.photoPickerService = photoPickerService
         self.errorHandler = errorHandler
+        self.voiceFileCache = voiceFileCache
         self.logger = logger
 
         setupPlaybackCallbacks()
@@ -333,23 +338,44 @@ final class ChatViewModel: ObservableObject {
 
     /// 播放语音消息
     ///
+    /// 优先播放本地文件；本地不存在且有 `remoteURL` 时先经 `voiceFileCache` 下载再播放。
+    ///
     /// - Parameter id: 消息 ID
     func playVoiceMessage(id: UUID) {
         guard let message = messages.first(where: { $0.id == id }),
-              case .voice(let localURL, _, _) = message.kind,
-              let url = localURL else { return }
+              case .voice(let localURL, let remoteURL, _) = message.kind else { return }
 
-        do {
-            try playbackService.play(id: id, url: url)
-            playingMessageID = id
-
-            // 标记为已播放
-            if !message.isPlayed && !message.isOutgoing {
-                markAsPlayed(id: id)
+        // `resolve` 为异步下载，必须在 Task 中执行；播放与 UI 状态仍在主 actor 上更新
+        Task {
+            let playURL: URL
+            // 发送方本地 m4a 或已落盘的接收方文件
+            if let local = localURL, FileManager.default.fileExists(atPath: local.path) {
+                playURL = local
+            } else if let remote = remoteURL {
+                // 仅远程 URL：经 `FileCacheService`（默认 `VoiceCacheManager`）下载到 `Caches/.../IMVoiceCache` 再播
+                do {
+                    playURL = try await voiceFileCache.resolve(remote)
+                } catch {
+                    logger.error("远程语音缓存失败: \(error)")
+                    self.error = .playbackStartFailed
+                    return
+                }
+            } else {
+                logger.error("语音消息无可用本地或远程 URL")
+                return
             }
-        } catch {
-            logger.error("Failed to play voice message: \(error)")
-            self.error = .playbackStartFailed
+
+            do {
+                try playbackService.play(id: id, url: playURL)
+                playingMessageID = id
+
+                if !message.isPlayed && !message.isOutgoing {
+                    markAsPlayed(id: id)
+                }
+            } catch {
+                logger.error("Failed to play voice message: \(error)")
+                self.error = .playbackStartFailed
+            }
         }
     }
 

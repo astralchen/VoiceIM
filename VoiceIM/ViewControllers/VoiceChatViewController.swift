@@ -276,6 +276,14 @@ final class VoiceChatViewController: UIViewController {
                 guard let self else { return 0 }
                 return self.viewModel.playbackService.currentProgress(for: id)
             },
+            playbackDuration: { [weak self] id in
+                guard let self else { return 0 }
+                return self.viewModel.playbackService.playbackDuration(for: id)
+            },
+            playbackRemaining: { [weak self] id in
+                guard let self else { return 0 }
+                return self.viewModel.playbackService.playbackRemaining(for: id)
+            },
             voiceDelegate: self,
             imageDelegate: self,
             videoDelegate: self,
@@ -484,36 +492,21 @@ final class VoiceChatViewController: UIViewController {
 
 extension VoiceChatViewController: VoiceMessageCellDelegate {
     func cellDidTapPlay(_ cell: VoiceMessageCell, message: ChatMessage) {
-        // 直接使用 cell 传递的 message，避免从 ViewModel 查找导致的不同步问题
         VoiceIM.logger.debug("cellDidTapPlay called for message: \(message.id)")
 
-        guard case .voice(let localURL, _, _) = message.kind else {
+        guard case .voice(let localURL, let remoteURL, _) = message.kind else {
             VoiceIM.logger.error("Not a voice message")
             ToastView.show("不是语音消息", in: view)
             return
         }
 
-        guard let url = localURL else {
-            VoiceIM.logger.error("Voice message localURL is nil")
+        if localURL == nil, remoteURL == nil {
             ToastView.show("语音文件不存在", in: view)
             return
         }
 
-        let fileExists = FileManager.default.fileExists(atPath: url.path)
-        VoiceIM.logger.debug("Voice URL: \(url), file exists: \(fileExists)")
-
-        do {
-            try viewModel.playbackService.play(id: message.id, url: url)
-            VoiceIM.logger.info("Voice playback started successfully")
-
-            // 标记为已播放
-            if !message.isPlayed && !message.isOutgoing {
-                viewModel.markAsPlayed(id: message.id)
-            }
-        } catch {
-            VoiceIM.logger.error("Voice playback failed: \(error)")
-            ToastView.show("播放失败: \(error.localizedDescription)", in: view)
-        }
+        // 统一走 ViewModel：本地直播 + 远程 `voiceFileCache.resolve` + 已播标记，避免此处重复调用 `playbackService` 导致逻辑分叉
+        viewModel.playVoiceMessage(id: message.id)
     }
 
     func cellDidSeek(_ cell: VoiceMessageCell, message: ChatMessage, progress: Float) {

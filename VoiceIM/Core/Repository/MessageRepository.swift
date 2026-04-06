@@ -17,6 +17,8 @@ final class MessageRepository {
 
     private let storage: any MessageStorageProtocol
     private let fileStorage: any FileStorageProtocol
+    private let imageCache: ImageCacheManager
+    private let videoCache: VideoCacheManager
     private let logger: Logger
 
     // MARK: - Init
@@ -24,10 +26,16 @@ final class MessageRepository {
     init(
         storage: any MessageStorageProtocol = MessageStorage.shared,
         fileStorage: any FileStorageProtocol = FileStorageManager.shared,
+        imageCache: ImageCacheManager? = nil,
+        videoCache: VideoCacheManager? = nil,
         logger: Logger = VoiceIM.logger
     ) {
         self.storage = storage
         self.fileStorage = fileStorage
+        // Swift 6：默认实参在非隔离上下文求值，不能写 `ImageCacheManager = .shared`；在 `@MainActor` 体内再解析单例。
+        // `VideoCacheManager` 为 actor，`.shared` 取的是全局 actor 实例引用，同样避免出现在默认参数里。
+        self.imageCache = imageCache ?? ImageCacheManager.shared
+        self.videoCache = videoCache ?? VideoCacheManager.shared
         self.logger = logger
     }
 
@@ -105,8 +113,8 @@ final class MessageRepository {
             // 原因：
             // 1. 磁盘保存原图，支持高清预览和分享
             // 2. 内存缓存缩略图，列表显示快速
-            // 3. 统一由 ImageCacheManager 管理
-            let cacheURL = try await ImageCacheManager.shared.saveAndCacheImage(from: tempURL)
+            // 3. 使用构造注入的 `imageCache`（默认即 `ImageCacheManager.shared`），便于单测替换
+            let cacheURL = try await imageCache.saveAndCacheImage(from: tempURL)
             logger.info("💾 Saved to cache: \(cacheURL.lastPathComponent)")
 
             // 删除临时文件
@@ -136,8 +144,8 @@ final class MessageRepository {
         do {
             logger.info("📤 Sending video, temp: \(tempURL.lastPathComponent)")
 
-            // 保存到视频缓存目录 + 预生成缩略图（统一由 VideoCacheManager 管理，对应图片的 saveAndCacheImage）
-            let cacheURL = try await VideoCacheManager.shared.saveAndCacheVideo(from: tempURL)
+            // 保存到视频缓存目录并预生成缩略图；`videoCache` 与 `imageCache` 同为注入依赖，目录由 `ChatCacheBucket` 约束
+            let cacheURL = try await videoCache.saveAndCacheVideo(from: tempURL)
             logger.info("💾 Saved to cache: \(cacheURL.lastPathComponent)")
 
             // 删除临时文件
@@ -351,19 +359,22 @@ final class MessageRepository {
                 message = ChatMessage.text(
                     "历史消息 #\(i + 1)",
                     sender: i % 2 == 0 ? .me : .peer,
-                    sentAt: timestamp
+                    sentAt: timestamp,
+                    sendStatus: .delivered
                 )
             case 1:
                 message = ChatMessage.text(
                     "这是一条较长的历史消息，用于测试消息列表的显示效果 #\(i + 1)",
                     sender: i % 2 == 0 ? .me : .peer,
-                    sentAt: timestamp
+                    sentAt: timestamp,
+                    sendStatus: .delivered
                 )
             default:
                 message = ChatMessage.text(
                     "历史消息内容 #\(i + 1)",
                     sender: i % 2 == 0 ? .me : .peer,
-                    sentAt: timestamp
+                    sentAt: timestamp,
+                    sendStatus: .delivered
                 )
             }
 

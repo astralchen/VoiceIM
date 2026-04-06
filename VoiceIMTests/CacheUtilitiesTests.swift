@@ -224,4 +224,21 @@ struct CacheUtilitiesTests {
         cache.set("test" as NSString, for: "test")
         #expect(cache.get("test") == "test")
     }
+
+    // MARK: - ChatCacheBucket
+
+    @Test("ChatCacheBucket 子路径统一带 VoiceIM 前缀")
+    func testChatCacheBucketSubdirectoryPath() {
+        #expect(ChatCacheBucket.image.subdirectoryPath == "VoiceIM/ImageCache")
+        #expect(ChatCacheBucket.video.subdirectoryPath == "VoiceIM/VideoCache")
+        #expect(ChatCacheBucket.voiceRemote.subdirectoryPath == "VoiceIM/IMVoiceCache")
+    }
+
+    @Test("ChatCacheBucket.ensureDirectory 可创建目录")
+    func testChatCacheBucketEnsureDirectory() throws {
+        let url = try ChatCacheBucket.image.ensureDirectory()
+        var isDir: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir))
+        #expect(isDir.boolValue)
+    }
 }

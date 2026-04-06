@@ -79,6 +79,12 @@ protocol AudioPlaybackService: AnyObject {
     /// 获取当前播放进度（0~1）
     func currentProgress(for id: UUID) -> Float
 
+    /// 当前解码得到的音频总时长（秒）；仅当正在播放指定消息时非零，用于与消息内嵌时长对齐展示
+    func playbackDuration(for id: UUID) -> TimeInterval
+
+    /// 当前播放剩余时长（秒）；与 `currentTime` 同源，避免用进度反推时出现尾段显示 0" 而条仍在动
+    func playbackRemaining(for id: UUID) -> TimeInterval
+
     /// 跳转到指定进度（0~1）
     func seek(to progress: Float)
 }
@@ -108,19 +114,28 @@ protocol PhotoPickerService {
     func pickMedia(from viewController: UIViewController, allowsMultiple: Bool) async throws -> PhotoPickerResult?
 }
 
-/// 文件缓存服务协议
+/// 远程媒体文件落盘缓存协议（当前用于：**仅有远程 URL 的语音消息**在播放前下载到本地）。
 ///
-/// 定义文件缓存的核心能力，解耦依赖方与具体实现。
+/// # 典型调用链
+/// 1. 用户点击播放 → `ChatViewModel.playVoiceMessage` 发现本地文件不存在、但有 `remoteURL`
+/// 2. 调用 `voiceFileCache.resolve(remoteURL)` 得到可交给 `AVAudioPlayer` 的 **file URL**（目录一般为 `Caches/.../VoiceIM/IMVoiceCache`）
+/// 3. 再次播放同一远程 URL 时，实现应命中已有文件，避免重复下载（生产实现委托 `RemoteFileCache`）
+///
+/// # 与「用户录音」的区别
+/// 用户录制的语音保存在 **Documents**（`FileStorageManager`），**不在**本协议管理范围内；本协议只处理**可再从服务器拉取**的远程文件缓存。
+///
+/// # 依赖注入
+/// - 生产：`AppDependencies.cacheService`（`VoiceCacheManager`）经 `makeChatViewModel(voiceFileCache:)` 传入 `ChatViewModel`
+/// - 测试：注入不触网的 `Sendable` 实现，或固定返回临时文件 URL
 ///
 /// # 实现者
-/// - `VoiceCacheManager`：生产环境使用的缓存管理器
-/// - `MockCacheService`：单元测试使用的 Mock 实现
-protocol FileCacheService {
+/// - `VoiceCacheManager`：生产环境
+protocol FileCacheService: Sendable {
 
-    /// 解析远程 URL：本地缓存已存在直接返回，否则下载后缓存
+    /// 若磁盘已有对应稳定哈希文件则直接返回其 URL；否则下载并移动到缓存目录后再返回。
     ///
-    /// - Parameter remoteURL: 远程文件 URL
-    /// - Returns: 本地缓存文件 URL
+    /// - Parameter remoteURL: 远程资源地址（通常为 HTTPS）
+    /// - Returns: 本地 `file://` URL，供播放器打开
     func resolve(_ remoteURL: URL) async throws -> URL
 }
 

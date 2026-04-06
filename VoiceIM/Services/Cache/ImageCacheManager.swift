@@ -57,11 +57,11 @@ final class ImageCacheManager {
     /// 临时内存缓存（选图/处理期间）
     private nonisolated(unsafe) let tempMemoryCache = NSCache<NSString, UIImage>()
 
-    /// 永久磁盘缓存目录
-    let diskCacheURL: URL
+    /// 永久磁盘缓存目录（初始化后不变；`URL` 为 `Sendable`，`nonisolated` 方法可直接读取）
+    private let diskCacheURL: URL
 
-    /// 磁盘操作 actor（保证并发安全）
-    private let diskActor = DiskCacheActor()
+    /// 并发加载去重（同一 URL 共用一个任务）
+    private let loadDedup = ImageLoadDedupActor()
 
     /// 内存警告观察者
     private var memoryWarningObserver: NSObjectProtocol?
@@ -75,15 +75,10 @@ final class ImageCacheManager {
         tempMemoryCache.countLimit = 10
         tempMemoryCache.totalCostLimit = 20 * 1024 * 1024  // 20 MB
 
-        guard let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
-            fatalError("Failed to get caches directory")
+        guard let diskURL = try? ChatCacheBucket.image.ensureDirectory() else {
+            fatalError("无法创建图片缓存目录")
         }
-        diskCacheURL = cacheDir.appendingPathComponent("ImageCache", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: diskCacheURL, withIntermediateDirectories: true)
-        } catch {
-            print("Failed to create image cache directory: \(error)")
-        }
+        diskCacheURL = diskURL
 
         memoryWarningObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
@@ -100,6 +95,7 @@ final class ImageCacheManager {
         }
     }
 
+    #if DEBUG
     /// 测试专用初始化方法（使用独立磁盘目录，避免污染真实缓存）
     init(testDiskCacheURL: URL) {
         memoryCache.countLimit = 50
@@ -109,8 +105,9 @@ final class ImageCacheManager {
         tempMemoryCache.totalCostLimit = 20 * 1024 * 1024
 
         diskCacheURL = testDiskCacheURL
-        try? FileManager.default.createDirectory(at: diskCacheURL, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: testDiskCacheURL, withIntermediateDirectories: true)
     }
+    #endif
 
     // MARK: - URL Resolution
 
@@ -172,28 +169,21 @@ final class ImageCacheManager {
     ///   - url: 本地 file URL 或远程 HTTPS URL
     ///   - targetSize: 目标渲染尺寸，用于下采样节省内存
     func loadImage(from url: URL, targetSize: CGSize? = nil) async -> UIImage? {
-        // 1. 内存 + 磁盘同步检查（复用 cachedImage，命中则无需启动 Task）
         if let image = cachedImage(for: url) {
             return image
         }
 
-        // 2. 并发去重：复用已有任务
-        if let existing = await diskActor.getLoadingTask(for: url) {
-            return try? await existing.value
+        // `loadDedup` 在独立 actor 上执行闭包；解码/下采样逻辑在 `@MainActor` 的 self 上，必须通过 `Task { @MainActor }.value` 跳回主线程（Swift 6 下也不宜用会歧义的 `MainActor.run` 重载）。
+        return try? await loadDedup.load(url: url) { [weak self] in
+            await Task { @MainActor [weak self] in
+                guard let self else { return nil as UIImage? }
+                if url.isFileURL {
+                    return await self.loadLocalImage(url: url, targetSize: targetSize)
+                } else {
+                    return await self.loadRemoteImage(url: url, targetSize: targetSize)
+                }
+            }.value
         }
-
-        // 3. 启动新任务
-        let task = Task<UIImage?, Error> { [weak self] in
-            guard let self else { return nil }
-            return url.isFileURL
-                ? await self.loadLocalImage(url: url, targetSize: targetSize)
-                : await self.loadRemoteImage(url: url, targetSize: targetSize)
-        }
-
-        await diskActor.setLoadingTask(task, for: url)
-        let result = try? await task.value
-        await diskActor.removeLoadingTask(for: url)
-        return result
     }
 
     // MARK: - Save to Permanent Cache
@@ -384,31 +374,17 @@ final class ImageCacheManager {
     }
 }
 
-// MARK: - DiskCacheActor
+// MARK: - ImageLoadDedupActor
 
-/// 磁盘缓存操作 actor（串行执行，保证并发安全）
-private actor DiskCacheActor {
-
-    /// 任务去重器（避免重复加载）
+/// 图片异步加载去重：相同 `URL` 的并发 `loadImage` 合并为一次 `operation`，避免重复网络请求与解码。
+///
+/// 说明：与远程文件「整文件下载」的 `RemoteFileCache` 分工不同——此处针对 `UIImage` 管线（含下采样），故仍用 `URLSession.data` 等逻辑留在 `loadRemoteImage`。
+private actor ImageLoadDedupActor {
     private let deduplicator = TaskDeduplicator<URL, UIImage?>()
 
-    func getLoadingTask(for url: URL) -> Task<UIImage?, Error>? {
-        // TaskDeduplicator 内部管理任务，此方法保留用于兼容性
-        nil
-    }
-
-    func setLoadingTask(_ task: Task<UIImage?, Error>, for url: URL) {
-        // TaskDeduplicator 内部管理任务，此方法保留用于兼容性
-    }
-
-    func removeLoadingTask(for url: URL) {
-        // TaskDeduplicator 内部管理任务，此方法保留用于兼容性
-    }
-
-    /// 使用去重器加载图片
-    func loadWithDeduplication(
+    func load(
         url: URL,
-        operation: @escaping () async throws -> UIImage?
+        operation: @escaping @Sendable () async throws -> UIImage?
     ) async throws -> UIImage? {
         try await deduplicator.deduplicate(key: url, operation: operation)
     }

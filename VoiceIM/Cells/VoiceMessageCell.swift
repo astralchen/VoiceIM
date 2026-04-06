@@ -23,6 +23,10 @@ final class VoiceMessageCell: ChatBubbleCell {
     private let waveformView = WaveformProgressView()
     /// 用户正在拖拽时为 true，屏蔽来自播放器的进度推送，避免抖动
     private var isSeeking    = false
+    /// 用于右侧秒数：`max(消息内嵌时长, 播放器解码时长)`，避免内嵌为 0 时播放中仍显示 0"
+    private var durationForTimeLabel: TimeInterval = 0
+    /// 播放中从播放器读剩余秒数（与进度条同源）；拖拽时用 `durationForTimeLabel` + 滑块进度推算
+    private var playbackRemainingProvider: (() -> TimeInterval)?
     /// 未播放红点（加到 contentView 层，避免被 bubble.masksToBounds 裁掉一半）
     private let unreadDot    = UIView()
 
@@ -143,7 +147,8 @@ final class VoiceMessageCell: ChatBubbleCell {
             // 1. audioDuration 会触发 invalidateIntrinsicContentSize()，立即更新视图宽度
             // 2. loadWaveform 是异步的，完成后只更新波形绘制，不影响布局
             // 3. 这个顺序避免了布局闪烁（先显示默认宽度，再跳变到正确宽度）
-            waveformView.audioDuration = duration
+            // `durationForTimeLabel` 在 configure(deps:) 里已设为 max(内嵌, 播放器时长)，与右侧秒数一致
+            waveformView.audioDuration = max(duration, durationForTimeLabel)
 
             // 异步加载真实音频波形数据（不阻塞 UI）
             if let url = localURL ?? remoteURL {
@@ -182,8 +187,13 @@ final class VoiceMessageCell: ChatBubbleCell {
             if !isSeeking {
                 waveformView.progress = progress
             }
-            updateRemainingLabel(progress: waveformView.progress)
+            if isSeeking {
+                updateRemainingLabel(progress: waveformView.progress)
+            } else {
+                refreshPlayingRemainingLabel()
+            }
         } else {
+            playbackRemainingProvider = nil
             isSeeking = false
             waveformView.progress = 0
             showTotalDuration()
@@ -193,16 +203,28 @@ final class VoiceMessageCell: ChatBubbleCell {
     // MARK: - 时长标签
 
     private func showTotalDuration() {
-        guard let msg = message else { return }
-        let secs = Int(max(msg.duration, 0).rounded(.down))
+        let secs = Int(max(durationForTimeLabel, 0).rounded(.down))
         durationLabel.text = String(format: "%d\"", max(secs, 1))
     }
 
     private func updateRemainingLabel(progress: Float) {
-        guard let msg = message else { return }
-        let remaining = msg.duration * Double(1.0 - progress)
-        let secs = Int(max(remaining, 0).rounded(.down))
-        durationLabel.text = String(format: "%d\"", max(secs, 0))
+        let remaining = durationForTimeLabel * Double(1.0 - progress)
+        durationLabel.text = Self.formattedRemainingSeconds(remaining)
+    }
+
+    /// 非拖拽时直接用播放器剩余时长，与波形进度同源；尾段不足 1 秒仍显示 1"，避免条还在动却显示 0"
+    private func refreshPlayingRemainingLabel() {
+        if let provider = playbackRemainingProvider {
+            durationLabel.text = Self.formattedRemainingSeconds(provider())
+        } else {
+            updateRemainingLabel(progress: waveformView.progress)
+        }
+    }
+
+    private static func formattedRemainingSeconds(_ remaining: TimeInterval) -> String {
+        if remaining <= 0 { return String(format: "%d\"", 0) }
+        if remaining < 1 { return String(format: "%d\"", 1) }
+        return String(format: "%d\"", Int(remaining.rounded(.down)))
     }
 
     // MARK: - Waveform 事件
@@ -243,6 +265,10 @@ extension VoiceMessageCell: MessageCellConfigurable {
         delegate = deps.voiceDelegate
         let isPlaying = deps.isPlaying(message.id)
         let progress = isPlaying ? deps.currentProgress(message.id) : 0
+        let fromPlayer = isPlaying ? deps.playbackDuration(message.id) : 0
+        durationForTimeLabel = max(message.duration, fromPlayer)
+        let mid = message.id
+        playbackRemainingProvider = isPlaying ? { deps.playbackRemaining(mid) } : nil
         configure(with: message,
                   isPlaying: isPlaying,
                   progress: progress,

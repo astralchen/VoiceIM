@@ -64,6 +64,8 @@ final class AppDependencies {
         MessageRepository(
             storage: messageStorage,
             fileStorage: fileStorageManager,
+            imageCache: ImageCacheManager.shared,
+            videoCache: VideoCacheManager.shared,
             logger: logger
         )
     }()
@@ -109,6 +111,8 @@ final class AppDependencies {
             recordService: recordService,
             photoPickerService: photoPickerService,
             errorHandler: errorHandler,
+            // `VoiceCacheManager` 实现 `FileCacheService`，供播放远程语音前落盘（与图片/视频的缓存管理器并列，由容器统一持有）
+            voiceFileCache: cacheService,
             logger: logger
         )
     }
