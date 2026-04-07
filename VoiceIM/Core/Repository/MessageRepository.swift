@@ -2,12 +2,14 @@ import Foundation
 
 /// 消息仓库：封装消息的业务逻辑
 ///
-/// 所有读写通过 `MessageStorage` 对应的会话 `contactID` 进行隔离。
-/// 写操作在 `MessageStorage` 内部以事务方式同步更新会话、成员、回执等关联表。
+/// 消息读写通过 `MessageStorageProtocol`、会话已读通过 `ReceiptStorageProtocol`，按会话 `contactID` 隔离。
 @MainActor
 final class MessageRepository {
 
-    private let storage: MessageStorage
+    /// 消息 CRUD、列表加载等均走消息存储。
+    private let messageStorage: any MessageStorageProtocol
+    /// 整会话已读、未读计数与 `message_receipts` / `conversation_members` 对齐，单独抽象便于与列表侧 `ConversationStorageProtocol` 分工。
+    private let receiptStorage: any ReceiptStorageProtocol
     private let fileStorage: any FileStorageProtocol
     private let imageCache: ImageCacheManager
     private let videoCache: VideoCacheManager
@@ -16,14 +18,16 @@ final class MessageRepository {
     let conversationID: String
 
     init(
-        storage: MessageStorage = .shared,
+        messageStorage: any MessageStorageProtocol = MessageStore.shared,
+        receiptStorage: any ReceiptStorageProtocol = ReceiptStore.shared,
         fileStorage: any FileStorageProtocol = FileStorageManager.shared,
         contactID: String,
         imageCache: ImageCacheManager? = nil,
         videoCache: VideoCacheManager? = nil,
         logger: Logger = VoiceIM.logger
     ) {
-        self.storage = storage
+        self.messageStorage = messageStorage
+        self.receiptStorage = receiptStorage
         self.fileStorage = fileStorage
         self.imageCache = imageCache ?? ImageCacheManager.shared
         self.videoCache = videoCache ?? VideoCacheManager.shared
@@ -35,7 +39,7 @@ final class MessageRepository {
 
     func loadMessages() async throws -> [ChatMessage] {
         do {
-            let messages = try await storage.load(contactID: conversationID)
+            let messages = try await messageStorage.load(contactID: conversationID)
             logger.info("Loaded \(messages.count) messages from storage")
             return messages
         } catch {
@@ -47,7 +51,7 @@ final class MessageRepository {
     func sendTextMessage(text: String, sender: Sender = .me) async throws -> ChatMessage {
         do {
             let message = ChatMessage.text(text, sender: sender, sentAt: Date())
-            try await storage.append(message, contactID: conversationID)
+            try await messageStorage.append(message, contactID: conversationID)
             logger.info("Sent text message: \(message.id)")
             return message
         } catch {
@@ -60,7 +64,7 @@ final class MessageRepository {
         do {
             let permanentURL = try await fileStorage.saveVoiceFile(from: tempURL)
             let message = ChatMessage.voice(localURL: permanentURL, duration: duration, sentAt: Date())
-            try await storage.append(message, contactID: conversationID)
+            try await messageStorage.append(message, contactID: conversationID)
             try? await fileStorage.deleteFile(at: tempURL)
             logger.info("Sent voice message: \(message.id), duration: \(duration)s")
             return message
@@ -75,7 +79,7 @@ final class MessageRepository {
             let cacheURL = try await imageCache.saveAndCacheImage(from: tempURL)
             try? await fileStorage.deleteFile(at: tempURL)
             let message = ChatMessage.image(localURL: cacheURL, sentAt: Date())
-            try await storage.append(message, contactID: conversationID)
+            try await messageStorage.append(message, contactID: conversationID)
             logger.info("Sent image message: \(message.id)")
             return message
         } catch {
@@ -89,7 +93,7 @@ final class MessageRepository {
             let cacheURL = try await videoCache.saveAndCacheVideo(from: tempURL)
             try? FileManager.default.removeItem(at: tempURL)
             let message = ChatMessage.video(localURL: cacheURL, duration: duration, sentAt: Date())
-            try await storage.append(message, contactID: conversationID)
+            try await messageStorage.append(message, contactID: conversationID)
             logger.info("Sent video message: \(message.id), duration: \(duration)s")
             return message
         } catch {
@@ -101,7 +105,7 @@ final class MessageRepository {
     func sendLocationMessage(latitude: Double, longitude: Double, address: String?, sender: Sender = .me) async throws -> ChatMessage {
         do {
             let message = ChatMessage.location(latitude: latitude, longitude: longitude, address: address, sentAt: Date())
-            try await storage.append(message, contactID: conversationID)
+            try await messageStorage.append(message, contactID: conversationID)
             logger.info("Sent location message: \(message.id)")
             return message
         } catch {
@@ -112,14 +116,14 @@ final class MessageRepository {
 
     func deleteMessage(id: String) async throws {
         do {
-            let messages = try await storage.load(contactID: conversationID)
+            let messages = try await messageStorage.load(contactID: conversationID)
             guard let message = messages.first(where: { $0.id == id }) else {
                 throw ChatError.messageNotFound(id: id)
             }
             if let localURL = message.localURL {
                 try? await fileStorage.deleteFile(at: localURL)
             }
-            try await storage.delete(id: id, contactID: conversationID)
+            try await messageStorage.delete(id: id, contactID: conversationID)
             logger.info("Deleted message: \(id)")
         } catch let error as ChatError {
             throw error
@@ -131,7 +135,7 @@ final class MessageRepository {
 
     func recallMessage(id: String) async throws {
         do {
-            let messages = try await storage.load(contactID: conversationID)
+            let messages = try await messageStorage.load(contactID: conversationID)
             guard let message = messages.first(where: { $0.id == id }) else {
                 throw ChatError.messageNotFound(id: id)
             }
@@ -148,7 +152,7 @@ final class MessageRepository {
 
             var recalledMessage = message
             recalledMessage.kind = .recalled(originalText: originalText)
-            try await storage.update(recalledMessage, contactID: conversationID)
+            try await messageStorage.update(recalledMessage, contactID: conversationID)
             logger.info("Recalled message: \(id)")
         } catch let error as ChatError {
             throw error
@@ -160,12 +164,12 @@ final class MessageRepository {
 
     func updateSendStatus(id: String, status: ChatMessage.SendStatus) async throws {
         do {
-            let messages = try await storage.load(contactID: conversationID)
+            let messages = try await messageStorage.load(contactID: conversationID)
             guard var message = messages.first(where: { $0.id == id }) else {
                 throw ChatError.messageNotFound(id: id)
             }
             message.sendStatus = status
-            try await storage.update(message, contactID: conversationID)
+            try await messageStorage.update(message, contactID: conversationID)
             logger.debug("Updated message \(id) status to \(status)")
         } catch let error as ChatError {
             throw error
@@ -177,13 +181,13 @@ final class MessageRepository {
 
     func markAsPlayed(id: String) async throws {
         do {
-            let messages = try await storage.load(contactID: conversationID)
+            let messages = try await messageStorage.load(contactID: conversationID)
             guard var message = messages.first(where: { $0.id == id }) else {
                 throw ChatError.messageNotFound(id: id)
             }
             message.isPlayed = true
             message.isRead = true
-            try await storage.update(message, contactID: conversationID)
+            try await messageStorage.update(message, contactID: conversationID)
             logger.debug("Marked message \(id) as played")
         } catch let error as ChatError {
             throw error
@@ -193,9 +197,10 @@ final class MessageRepository {
         }
     }
 
+    /// 故意走 `ReceiptStorageProtocol`：聊天页不依赖会话列表用的 `ConversationStorageProtocol`，减少门面交叉引用。
     func markConversationAsRead() async throws {
         do {
-            try await storage.markConversationAsRead(contactID: conversationID)
+            try await receiptStorage.markConversationAsRead(contactID: conversationID)
         } catch {
             logger.error("Failed to mark conversation as read: \(error)")
             throw ChatError.storageWriteFailed
@@ -204,7 +209,7 @@ final class MessageRepository {
 
     func cleanOrphanedFiles() async -> Int {
         do {
-            let messages = try await storage.load(contactID: conversationID)
+            let messages = try await messageStorage.load(contactID: conversationID)
             let referencedURLs = Set(messages.compactMap { $0.localURL })
             let cleanedCount = await fileStorage.cleanOrphanedFiles(referencedURLs: referencedURLs)
             logger.info("Cleaned \(cleanedCount) orphaned files")
@@ -217,7 +222,7 @@ final class MessageRepository {
 
     func loadHistory(page: Int, pageSize: Int = 20) async throws -> [ChatMessage] {
         do {
-            let allMessages = try await storage.load(contactID: conversationID)
+            let allMessages = try await messageStorage.load(contactID: conversationID)
             let startIndex = page * pageSize
             guard startIndex < allMessages.count else { return [] }
             let endIndex = min(startIndex + pageSize, allMessages.count)

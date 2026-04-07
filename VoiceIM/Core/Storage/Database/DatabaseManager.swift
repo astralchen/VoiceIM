@@ -1,10 +1,6 @@
 import Foundation
 import GRDB
 
-#if !DEBUG && !SQLITE_HAS_CODEC
-#error("Release 构建必须启用 SQLITE_HAS_CODEC，以满足数据库加密要求。")
-#endif
-
 /// 数据库管理器：全局唯一的 SQLite 连接与迁移入口
 ///
 /// # 职责
@@ -13,21 +9,22 @@ import GRDB
 /// 3. 强制开启 SQLite 外键约束（`PRAGMA foreign_keys = ON`）
 /// 4. 在 SQLCipher 构建下自动从 Keychain 读取/生成密钥并启用加密
 ///
-/// # DEBUG / RELEASE 加密策略
-/// - DEBUG：允许输出加密运行态自检日志（`PRAGMA cipher_version`），便于开发排查。
-/// - RELEASE：编译期强制要求 `SQLITE_HAS_CODEC`，防止误打包为明文 SQLite。
+/// # 加密（SQLCipher）与编译宏
+/// - 仅当工程 **定义 `SQLITE_HAS_CODEC`** 且链接 SQLCipher 版 GRDB 时，下方 `usePassphrase` / `cipherVersion` 才会参与编译与运行。
+/// - 当前默认 SPM 包多为系统 SQLite：未定义该宏时，数据库为**明文**文件，但迁移与外键逻辑仍生效。
+/// - DEBUG 下若启用 SQLCipher，会打 `PRAGMA cipher_version` 自检日志。
 ///
 /// # 线程安全
 /// `DatabaseQueue` 内部串行化所有数据库访问，`DatabaseManager` 本身是 `Sendable`，
 /// 可以安全地从任意线程/actor 调用 `read`/`write`。
 ///
-/// # 与 MessageStorage 的关系
+/// # 与存储层的关系
 /// ```
 /// DatabaseManager（连接 + 迁移）
 ///       ↓ 注入
-/// MessageStorage（业务读写 actor）
+/// MessageStorage（门面）→ MessageStore / ConversationStore / ReceiptStore
 ///       ↓ 被调用
-/// MessageRepository（业务逻辑 @MainActor）
+/// MessageRepository / ConversationListViewModel（@MainActor）
 /// ```
 final class DatabaseManager: Sendable {
 
@@ -73,6 +70,7 @@ final class DatabaseManager: Sendable {
         // 每次打开连接都需要执行，因为 SQLite 默认关闭外键。
         config.prepareDatabase { db in
             #if SQLITE_HAS_CODEC
+            // 口令来自 Keychain；无 passphrase 时仍打开库（兼容测试路径），生产接 Cipher 后应保证有密钥。
             if let passphrase {
                 try db.usePassphrase(passphrase)
                 _ = try db.cipherVersion

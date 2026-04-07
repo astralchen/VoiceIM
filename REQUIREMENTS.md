@@ -1,6 +1,7 @@
 # IM 语音消息功能需求文档
 
-> 整理自开发会话，持续更新。
+> 整理自开发会话，持续更新。  
+> **2026-04 起**：已接入本地 **GRDB** 持久化、会话列表与多模块目录结构；下文「文件结构」与「数据层」以当前仓库为准。
 
 ---
 
@@ -43,6 +44,7 @@
 | 文本消息 | `ChatMessage.Kind.text(String)` | `TextMessageCell` |
 | 图片消息 | `ChatMessage.Kind.image(localURL:remoteURL:)` | `ImageMessageCell` |
 | 视频消息 | `ChatMessage.Kind.video(localURL:remoteURL:duration:)` | `VideoMessageCell` |
+| 位置消息 | `ChatMessage.Kind.location(latitude:longitude:address:)` | `LocationMessageCell` |
 | 撤回消息 | `ChatMessage.Kind.recalled(originalText:)` | `RecalledMessageCell` |
 
 ### 2.2 发送者与方向
@@ -82,7 +84,7 @@
 - 70% 成功率（`.delivered`），30% 失败率（`.failed`）
 - 生产环境替换为真实网络请求
 
-### 2.3 时间分隔行
+### 2.4 时间分隔行
 
 - 规则：与上一条消息的 `sentAt` 间隔 **> 5 分钟**时，在该消息上方显示时间分隔行。
 - 第一条消息始终显示时间分隔行。
@@ -92,7 +94,7 @@
   - 更早：`M月d日 HH:mm`
 - 不显示时高度折叠为 0，不留白（`isHidden` + `heightConstraint = 0` 双重保证）。
 
-### 2.4 气泡布局
+### 2.5 气泡布局
 
 | 方向 | 头像位置 | 气泡位置 | 气泡背景色 |
 |------|----------|----------|------------|
@@ -102,18 +104,32 @@
 - 气泡最大宽度：contentView 宽度的 **65%**（为头像 36pt + 两侧边距共 52pt 留空间）。
 - 方向切换通过激活/停用两套预构建约束实现，cell 复用时先停用全部再激活目标套，避免约束冲突。
 
-### 2.5 滚动策略
+### 2.6 滚动策略
 
 - 用户**在底部附近**（距底部 < 60pt）时发送消息：自动滚动到最新消息。
 - 用户**正在浏览历史消息**时发送消息：不滚动，保持当前位置。
 - 判断公式：`contentSize.height - contentOffset.y - bounds.height + adjustedContentInset.bottom < 60`
 
-### 2.6 下拉加载历史记录
+### 2.7 下拉加载历史记录
 
 - 在列表顶部下拉触发 `UIRefreshControl`，加载更早的历史消息。
 - 历史消息插入列表头部，**不打断用户当前阅读位置**（`layoutIfNeeded()` 后补偿 `contentOffset.y`）。
 - 防重：加载期间再次下拉立即结束刷新，不重复发起请求（`isLoadingHistory` 标志）。
 - 加载完所有页后显示 Toast"没有更多历史消息"，不再触发请求。
+
+### 2.8 会话列表与通讯录（2026-04）
+
+**会话列表页**（`ConversationListViewController` + `ConversationListViewModel`）：
+
+- 使用 `UICollectionView` 展示会话；数据来自 **一次聚合查询**（未读、置顶、最后一条预览与时间），避免对每条会话再查库（实现见 `ConversationStore.loadConversationSummaries`）。
+- 与本地通讯录占位合并：无会话的联系人仍显示空会话行（按名称排序在列表底部）。
+- **侧滑操作**：删除会话（物理删除，外键级联）、标记已读、置顶/取消置顶、不显示该会话。
+- **隐藏会话**：`conversation_settings.is_hidden = 1` 时不出现在列表；该会话 **发送或接收任意新消息** 时自动 `is_hidden = 0` 恢复显示（实现见 `MessageStore.append`）。
+- **排序规则**：置顶优先 → 最近消息时间（无消息则回退会话创建时间）→ 会话 ID 稳定排序。
+
+**通讯录页**（`ContactsViewController`）：`UICollectionView` 展示联系人，进入聊天沿用单聊会话 ID（当前与 `contact.id` 一致）。
+
+**依赖注入**：`ConversationListViewModel` 依赖 `any MessageStorageProtocol`（DEBUG 种子数据）与 `any ConversationStorageProtocol`（列表与设置）；由 `AppDependencies.makeConversationListViewModel()` 统一注入。
 
 ---
 
@@ -164,8 +180,8 @@
 - 点击弹出功能菜单（`UIAlertController`，`.actionSheet` 样式）
 - 菜单选项：
   - **相册**：打开系统相册选择器
-  - **拍照**：开发中
-  - **位置**：开发中
+  - **拍照**：已接入口（能力随系统权限与实现演进）
+  - **位置**：当前为**演示用随机坐标**（`InputCoordinator.sendRandomLocation`）；生产应接 CoreLocation 与用户授权
   - **取消**
 
 ### 4.2 相册选择
@@ -270,8 +286,8 @@
 ## 六、未读提醒
 
 - 每条语音消息默认为**未读状态**，在气泡播放按钮右上角显示红色圆点（直径 10pt）。
-- 用户首次点击播放时，红点以 **0.2s 淡出动画**消失，标记为已读。
-- 已读状态持久化在 `ChatMessage.isPlayed`，供后续数据层持久化使用。
+- 用户首次点击播放时，红点以 **0.2s 淡出动画**消失；内存模型上更新 `isPlayed` / `isRead`，并由 `MessageRepository` 写回存储。
+- **持久化**：对方语音的已播/已读与「进入会话全部已读」写入 **`message_receipts`**（及 `conversation_members.unread_count`）；加载消息时由 `GRDBStorageCore.toChatMessage` 根据当前用户回执行还原 `isPlayed` / `isRead`。
 - cell 复用时根据 `isPlayed` 状态直接显隐红点（不触发动画），仅在状态从未读变已读时才播放淡出动画。
 
 ---
@@ -320,55 +336,91 @@
 | 相册选择 | PhotosUI（`PHPickerViewController`，iOS 14+） |
 | 视频播放 | AVKit（`AVPlayerViewController`） |
 | 列表组件 | `UICollectionView` + `UICollectionViewDiffableDataSource` + `UICollectionViewCompositionalLayout` |
-| 并发模型 | `async/await`，UI 操作统一在 `@MainActor`，下载缓存使用 `actor` |
+| 并发模型 | `async/await`，UI 操作统一在 `@MainActor`，下载缓存与 GRDB 存储使用 `actor` |
+| 本地数据库 | **GRDB**（SQLite），迁移见 `Migrations.swift`；依赖由 **Swift Package Manager** 引入（`project.yml`） |
 
 ---
 
-## 九、文件结构
+## 九、本地数据持久化（GRDB）
+
+### 9.1 目标与范围
+
+- 聊天消息、会话、成员、回执、附件元数据、每用户会话设置等均落库；**不做**历史 JSON 文件迁移，以 GRDB 为唯一本地来源。
+- 删除策略为**物理删除**（含会话删除时的外键级联，见迁移 DDL）。
+
+### 9.2 核心表（摘要）
+
+| 表 | 用途 |
+|----|------|
+| `users` | 用户展示名等 |
+| `conversations` | 会话主表 + `last_message_*` 冗余字段供列表排序 |
+| `conversation_members` | 成员、**未读数**、已读水位 `last_read_message_seq` |
+| `messages` | 消息主行（含 `client_msg_id` 幂等） |
+| `message_receipts` | 每用户对消息的已读/已播时间 |
+| `message_attachments` | 媒体路径、远程 URL、**sha256**、**size_bytes** 等 |
+| `conversation_settings` | 置顶、隐藏等 **每用户每会话** 设置 |
+
+### 9.3 存储分层与协议
+
+- **`GRDBStorageCore`**：共享 SQL 与 `ChatMessage` ↔ 表映射；由各 Store 在**单次** `DatabaseManager.read/write` 事务内调用，避免重复实现。
+- **`MessageStore`**（`MessageStorageProtocol`）：会话内消息增删改查、懒建会话、刷新 `last_message_*`、新消息恢复隐藏会话、对方消息未读 +1。
+- **`ConversationStore`**（`ConversationStorageProtocol`）：会话列表聚合、置顶/隐藏、物理删会话等。
+- **`ReceiptStore`**（`ReceiptStorageProtocol`）：与聊天页「整会话已读」对齐；与 `ConversationStore` 中同名能力 **共用** `GRDBStorageCore` SQL。
+- **`MessageStorage`**：可选**门面**，聚合上述三个 actor，共享同一 `DatabaseManager`；测试或单入口转发时使用。
+- **`MessageRepository`**：业务层；消息走 `messageStorage`，`markConversationAsRead()` 走 **`receiptStorage`**，便于与会话列表依赖解耦。
+- **`AppDependencies`**：构造三个 Store 实例（同一 DB），对外暴露 `any *Protocol` 供 ViewModel / 测试替换。
+
+### 9.4 附件完整性
+
+- 写入媒体附件时，若本地文件可读，计算 **SHA256** 与 **size** 写入 `message_attachments`。
+- 读取时校验；**不匹配则删除本地坏文件**并降级为仅远程 URL（见 `GRDBStorageCore.validatedLocalURL`）。
+
+### 9.5 加密（SQLCipher）说明
+
+- 代码中预留 `SQLITE_HAS_CODEC` 分支（Keychain 口令、`usePassphrase` 等）。**默认 SPM 官方 GRDB 多为系统 SQLite**，是否加密取决于工程是否定义该宏并链接 SQLCipher 变体；以 `README.md` 与 `DatabaseManager` 注释为准。
+
+---
+
+## 十、文件与模块结构
 
 ```
 VoiceIM/
-├── App/                           # 应用入口
+├── App/
 │   ├── AppDelegate.swift
-│   └── SceneDelegate.swift
-├── Models/                        # 数据模型
-│   ├── ChatMessage.swift          # 通用消息数据模型（voice/text/image/video）
-│   └── Sender.swift               # 发送者身份（id、displayName）
-├── Views/                         # 视图组件
-│   ├── AvatarView.swift           # 圆形头像占位视图
-│   ├── ChatInputView.swift        # 输入栏（文字/语音切换 + 扩展按钮）
-│   ├── RecordingOverlayView.swift # 录音浮层（正常/预备取消两态）
-│   └── ToastView.swift            # 轻量 Toast 提示
-├── ViewControllers/               # 视图控制器
-│   ├── VoiceChatViewController.swift          # 主页面（UICollectionView + DiffableDataSource）
-│   ├── RecordingOverlayViewController.swift   # 录音浮层控制器
-│   ├── ImagePreviewViewController.swift       # 图片全屏预览
-│   └── VideoPreviewViewController.swift       # 视频全屏播放
-├── Managers/                      # 业务逻辑管理器
-│   ├── VoiceRecordManager.swift   # 录音管理（@MainActor 单例）
-│   ├── VoicePlaybackManager.swift # 播放管理（@MainActor 单例，播放互斥）
-│   ├── VoiceCacheManager.swift    # 下载缓存（actor，线程安全）
-│   ├── MessageDataSource.swift    # 消息数据源管理（DiffableDataSource 封装）
-│   ├── MessageActionHandler.swift # 消息交互处理（长按菜单、删除、撤回、重试）
-│   ├── InputCoordinator.swift     # 输入协调器（文字/语音/图片/视频发送）
-│   └── KeyboardManager.swift      # 键盘管理（监听键盘事件、调整布局）
-├── Cells/                         # 消息 Cell
-│   ├── ChatBubbleCell.swift       # Cell 基类（时间分隔行 + 头像 + 收/发方向约束 + 状态指示器）
-│   ├── VoiceMessageCell.swift     # 语音消息 Cell（继承 ChatBubbleCell）
-│   ├── TextMessageCell.swift      # 文本消息 Cell（继承 ChatBubbleCell，支持长按复制）
-│   ├── ImageMessageCell.swift     # 图片消息 Cell（继承 ChatBubbleCell）
-│   ├── VideoMessageCell.swift     # 视频消息 Cell（继承 ChatBubbleCell）
-│   └── RecalledMessageCell.swift  # 撤回消息 Cell（继承 ChatBubbleCell）
-├── Protocols/                     # 协议定义
-│   └── MessageCellConfigurable.swift  # Cell 统一配置协议 + MessageCellDependencies
-└── Info.plist                     # 含 NSMicrophoneUsageDescription
+│   ├── SceneDelegate.swift
+│   └── AppCompositionRoot.swift
+├── Models/
+│   ├── ChatMessage.swift
+│   ├── Sender.swift
+│   ├── Contact.swift
+│   ├── ConversationSummary.swift
+│   └── MessageIDGenerator.swift
+├── Core/
+│   ├── Storage/
+│   │   ├── Database/              # DatabaseManager、Migrations、Records、KeychainHelper
+│   │   ├── GRDBStorageCore.swift
+│   │   ├── MessageStore.swift、ConversationStore.swift、ReceiptStore.swift
+│   │   ├── MessageStorage.swift、MessageStorage+Protocols.swift
+│   │   └── FileStorageManager.swift
+│   ├── Repository/MessageRepository.swift
+│   ├── ViewModel/                 # ChatViewModel、ConversationListViewModel
+│   ├── DependencyInjection/AppDependencies.swift
+│   ├── Error、Logging、Media
+├── ViewControllers/                 # 会话列表、通讯录、聊天、预览等
+├── DataSources/MessageDataSource.swift
+├── Coordinators/                    # InputCoordinator、MessageActionHandler
+├── Services/                        # 录音、播放、缓存、相册、键盘等
+├── Views/、Cells/、Protocols/、Utilities/、Transitions/
+└── Info.plist
 ```
+
+说明：原「Managers」目录已按职责拆到 `Services/`、`Coordinators/`、`DataSources/` 等，以仓库实际路径为准。
 
 ---
 
-## 十、关键设计决策
+## 十一、关键设计决策
 
-### 8.1 DiffableDataSource 与 isPlayed/sendStatus 更新（详见 ChatMessage.swift 注释）
+### 11.1 DiffableDataSource 与 isPlayed/sendStatus 更新（详见 ChatMessage.swift 注释）
 
 **问题**：`isPlayed` 和 `sendStatus` 是可变字段，但 DiffableDataSource 要求 item 符合 `Hashable`，状态更新方式影响视觉效果。
 
@@ -378,21 +430,21 @@ VoiceIM/
 | B（当前） | id | reloadItems + messages 数组 | 需维护两份数据 | iOS 13+ |
 | C（待升级） | id | reconfigureItems + insert/delete 替换 item | — | iOS 15+ |
 
-### 8.2 消息发送后的滚动策略
+### 11.2 消息发送后的滚动策略
 
 新消息追加使用 `animatingDifferences: false`，避免系统默认的从顶部滑入动画；滚动与否由 `isNearBottom` 决定。
 
-### 8.3 拖拽 Seek 防抖
+### 11.3 拖拽 Seek 防抖
 
 拖拽期间设置 `isSeeking = true`，阻断播放器 50ms 定时器的进度更新推送，防止 `UISlider.value` 被外部覆盖导致抖动。手指抬起后执行实际 seek 并重置标志。
 
-### 8.4 下拉加载历史的滚动位置保持
+### 11.4 下拉加载历史的滚动位置保持
 
 插入历史消息后内容总高度增加 ΔH，若不处理 `contentOffset` 会导致屏幕内容向下跳动。
 解决方案：`dataSource.apply` 后立即调用 `collectionView.layoutIfNeeded()` 强制同步布局，
 读取新 `contentSize.height`，将 `contentOffset.y` 加上 ΔH 抵消内容下移。
 
-### 8.5 Cell 类型扩展架构（MessageCellConfigurable）
+### 11.5 Cell 类型扩展架构（MessageCellConfigurable）
 
 **问题**：随消息类型增加，cell provider 内的 `switch` 分支持续膨胀，注册代码分散。
 
@@ -402,40 +454,38 @@ VoiceIM/
 - `MessageCellDependencies` 聚合外部依赖，新增依赖不影响协议签名。
 - cell provider 只剩一次 dequeue + 一次协议调用，新增类型只需：① 建 Cell 实现协议 ② `Kind.reuseID` 追加一行 ③ 注册一行。
 
-### 8.6 收/发方向布局切换
+### 11.6 收/发方向布局切换
 
 采用两套预构建约束数组（`incomingConstraints` / `outgoingConstraints`），`configureCommon` 时先全部停用再激活目标套。
 相比 `addConstraint`/`removeConstraint`，此方案在 cell 复用时不产生约束冲突警告。
 
-### 8.7 头像颜色稳定性
+### 11.7 头像颜色稳定性
 
 不使用 `String.hashValue`（Swift SE-0206 每次进程启动随机化），改用 UTF-8 字节求和映射到固定调色板，确保同一发送者头像颜色跨 session 一致。
 
-### 8.8 图片和视频消息的缩略图加载
+### 11.8 图片和视频消息的缩略图加载
 
 - **图片**：后台线程加载 `Data(contentsOf:)` → `UIImage(data:)`，主线程更新 UI
 - **视频**：使用 `AVAssetImageGenerator` 提取第一帧作为缩略图
 - 生产环境建议使用 SDWebImage 等专业图片加载库
 
-### 8.9 扩展功能按钮设计
+### 11.9 扩展功能按钮设计
 
 - 类似 iMessage 的 `+` 按钮，位于输入栏左侧
 - 通过 `UIAlertController` 弹出功能菜单
 - 使用 `PHPickerViewController` 选择相册（iOS 14+）
 - 预留拍照、位置等功能接口
 
-### 8.10 代码文件结构组织
+### 11.10 代码文件结构组织
 
-按功能模块分类到 7 个文件夹：
-- **App**: 应用入口（AppDelegate、SceneDelegate）
-- **Models**: 数据模型（ChatMessage、Sender）
-- **Views**: 视图组件（AvatarView、ChatInputView、RecordingOverlayView、ToastView）
-- **ViewControllers**: 视图控制器（主页面、录音浮层、图片/视频预览）
-- **Managers**: 业务逻辑管理器（录音、播放、缓存、数据源、交互处理、输入协调、键盘管理）
-- **Cells**: 消息 Cell（基类 + 5 种消息类型）
-- **Protocols**: 协议定义（MessageCellConfigurable）
+按功能模块分类（与 **第十章** 目录树一致，此处为逻辑分组）：
+- **App**：入口与 Composition Root  
+- **Models**：消息、联系人、会话摘要等  
+- **Core**：存储（GRDB）、Repository、ViewModel、依赖注入、错误与日志  
+- **ViewControllers / Views / Cells / Protocols**  
+- **Coordinators / Services / DataSources**：原分散在「Managers」的职责现归此类  
 
-### 8.11 文本消息复制与上下文菜单设计
+### 11.11 文本消息复制与上下文菜单设计
 
 **统一交互模式（UIContextMenuInteraction）**：
 - 所有消息类型统一使用 `UIContextMenuInteraction`（iOS 13+）
@@ -465,3 +515,8 @@ VoiceIM/
 - 易于扩展，新增菜单项只需修改 `buildContextMenu` 方法
 - Cell 可复用性强，可以在不同场景下使用不同的菜单
 - 智能识别文本中的特殊内容（URL、电话、银行卡号），提供便捷操作
+
+### 11.12 本地存储事务边界
+
+- 每个对外存储方法（`MessageStore` / `ConversationStore` / `ReceiptStore`）内部通常对应 **一次** `DatabaseManager.write` 或 `read`，闭包内多步 SQL 属于同一 SQLite 事务，保证消息行、附件、会话冗余字段、未读计数等一致更新。
+- 多个 `actor` 共享同一 `DatabaseManager` 时，由 GRDB 的 `DatabaseQueue` **串行化**所有访问，避免并发写竞态。

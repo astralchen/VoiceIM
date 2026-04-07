@@ -4,7 +4,7 @@ import UIKit
 enum AppCompositionRoot {
     static func makeRootViewController() -> UIViewController {
         let dependencies = AppDependencies.shared
-        let conversationListViewModel = ConversationListViewModel()
+        let conversationListViewModel = dependencies.makeConversationListViewModel()
         let conversationListVC = ConversationListViewController(
             viewModel: conversationListViewModel,
             dependencies: dependencies

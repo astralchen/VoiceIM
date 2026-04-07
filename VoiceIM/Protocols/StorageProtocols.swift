@@ -3,7 +3,7 @@ import Foundation
 /// 消息存储协议（按会话隔离读写）
 ///
 /// 定义消息持久化的核心能力，解耦 Repository 与具体实现。
-/// 生产环境实现为 `MessageStorage`（基于 GRDB 关系模型）。
+/// 生产环境实现为 `MessageStore`（基于 GRDB）；`MessageRepository` 等依赖 `any MessageStorageProtocol`。
 protocol MessageStorageProtocol: Actor {
 
     /// 保存消息列表到指定会话
@@ -31,6 +31,8 @@ protocol MessageStorageProtocol: Actor {
 /// 会话存储协议（会话列表、未读、已读）
 ///
 /// 定义会话级聚合查询能力，供 `ConversationListViewModel` 等使用。
+/// 生产环境实现为 `ConversationStore`；`ConversationListViewModel` 等依赖 `any ConversationStorageProtocol`。
+/// 未读/已读 SQL 与 `ReceiptStore` 共享 `GRDBStorageCore`。
 protocol ConversationStorageProtocol: Actor {
 
     /// 标记指定会话所有对方消息为已读
@@ -60,7 +62,8 @@ protocol ConversationStorageProtocol: Actor {
 
 /// 回执存储协议（已读/已播/未读计数）
 ///
-/// 用于隔离回执相关能力边界，便于后续从聚合存储中拆分独立实现。
+/// 生产环境实现为 `ReceiptStore`；`MessageRepository` 等依赖 `any ReceiptStorageProtocol`。
+/// 与 `ConversationStorageProtocol` 中同名方法共用 `GRDBStorageCore` 实现，语义一致。
 protocol ReceiptStorageProtocol: Actor {
     /// 标记会话为已读（写入回执并归零未读）
     func markConversationAsRead(contactID: String) throws

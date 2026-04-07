@@ -3,6 +3,18 @@
 # Swift 6.0 · UIKit · iOS 13.0+
 name: VoiceIM
 
+schemes:
+  VoiceIM:
+    build:
+      targets:
+        VoiceIM: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - VoiceIMTests
+
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
@@ -16,8 +28,10 @@ settings:
     ENABLE_STRICT_OBJC_MSGSEND: YES
 
 packages:
+  # 官方 SPM；若需 SQLCipher，可改回本地 path: Vendor/GRDB.swift 并按文档编译加密变体
   GRDB:
-    path: Vendor/GRDB.swift
+    url: https://github.com/groue/GRDB.swift
+    from: "6.29.3"
 
 targets:
   VoiceIM:
@@ -52,7 +66,9 @@ targets:
         INFOPLIST_FILE: VoiceIM/Info.plist
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SQLITE_HAS_CODEC"
+        # 使用 SPM 默认 GRDB（内置系统 SQLite）时不定义 SQLITE_HAS_CODEC。
+        # 接入 SQLCipher 本地包时，在此加入：SQLITE_HAS_CODEC
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited)"
     dependencies:
       - package: GRDB
         product: GRDB

@@ -8,7 +8,9 @@ final class AppDependencies {
 
     let logger: Logger
     let errorHandler: ErrorHandler
-    let messageStorage: MessageStorage
+    let messageStorage: any MessageStorageProtocol
+    let conversationStorage: any ConversationStorageProtocol
+    let receiptStorage: any ReceiptStorageProtocol
     let fileStorageManager: any FileStorageProtocol
     let recordService: AudioRecordService
     let playbackService: AudioPlaybackService
@@ -29,7 +31,11 @@ final class AppDependencies {
         #endif
 
         self.errorHandler = ErrorHandler.shared
-        self.messageStorage = MessageStorage.shared
+        // 三个 Store 共用同一队列，保证多表更新与查询看到一致快照；对外以协议类型注入便于单测替换实现。
+        let db = DatabaseManager.shared
+        self.messageStorage = MessageStore(db: db)
+        self.conversationStorage = ConversationStore(db: db)
+        self.receiptStorage = ReceiptStore(db: db)
         self.fileStorageManager = FileStorageManager.shared
         self.recordService = VoiceRecordManager.shared
         self.playbackService = VoicePlaybackManager.shared
@@ -58,11 +64,21 @@ final class AppDependencies {
 
     func makeMessageRepository(contactID: String) -> MessageRepository {
         MessageRepository(
-            storage: messageStorage,
+            messageStorage: messageStorage,
+            receiptStorage: receiptStorage,
             fileStorage: fileStorageManager,
             contactID: contactID,
             imageCache: ImageCacheManager.shared,
             videoCache: VideoCacheManager.shared,
+            logger: logger
+        )
+    }
+
+    func makeConversationListViewModel(contacts: [Contact] = Contact.mockContacts) -> ConversationListViewModel {
+        ConversationListViewModel(
+            contacts: contacts,
+            messageStorage: messageStorage,
+            conversationStorage: conversationStorage,
             logger: logger
         )
     }

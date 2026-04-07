@@ -1,6 +1,6 @@
 ---
 name: 生产级GRDB数据建模
-overview: 基于当前工程代码（2026-04）更新的执行现状：GRDB 关系模型已落地并持续演进，新增会话置顶/隐藏、会话页与通讯录页 CollectionView 化；同时明确仍未完成的生产级项（SQLCipher、群聊语义、性能验证等）。
+overview: 截至 2026-04-07：表结构/迁移/存储拆分（MessageStore+ConversationStore+ReceiptStore+GRDBStorageCore）与协议注入已落地；GRDB 经 SPM 远程依赖；附件 sha256/size 与读路径校验、QueryPlan 单测、会话置顶/隐藏回归测已存在。仍缺：生产级 SQLCipher 默认开启与密钥轮换闭环、群聊端到端、系统化压测与书面性能报告。
 todos:
   - id: schema-ddl
     content: 定义生产级表结构、外键、唯一约束与审计字段
@@ -13,13 +13,13 @@ todos:
     status: completed
   - id: repo-adapt
     content: 改造 MessageRepository 与 ViewModel 对齐新关系模型（含群聊语义）
-    status: completed
+    status: in_progress
   - id: security-hardening
     content: 接入高安全策略：加密、密钥管理、日志脱敏
-    status: completed
+    status: in_progress
   - id: verification
     content: 完成功能回归、索引命中检查与性能验证
-    status: completed
+    status: in_progress
 isProject: false
 ---
 
@@ -31,7 +31,7 @@ isProject: false
 - 已不做历史 JSON 迁移；新数据以 GRDB 为唯一来源。
 - 删除策略已从“建议软删”调整为**当前业务物理删除**（会话删除依赖 FK CASCADE）。
 
-## 2) 当前实现快照（2026-04）
+## 2) 当前实现快照（2026-04，进度更新至 2026-04-07）
 
 ### 2.1 数据库层（已落地）
 
@@ -54,8 +54,15 @@ isProject: false
 
 ### 2.3 存储与查询能力（已落地并扩展）
 
-- 存储主入口：`VoiceIM/Core/Storage/MessageStorage.swift`
-- 会话维度接口已建立（协议位于 `StorageProtocols.swift`）：
+- **实现结构（已拆分）**
+  - 共享映射与 SQL：`VoiceIM/Core/Storage/GRDBStorageCore.swift`
+  - 消息读写 actor：`MessageStore.swift`（`MessageStorageProtocol`）
+  - 会话列表与设置：`ConversationStore.swift`（`ConversationStorageProtocol`）
+  - 回执/未读：`ReceiptStore.swift`（`ReceiptStorageProtocol`）
+  - 可选门面（测试/单入口转发）：`MessageStorage.swift`
+- **依赖注入**：`AppDependencies` 持有 `any MessageStorageProtocol` / `ConversationStorageProtocol` / `ReceiptStorageProtocol`，`MessageRepository`、`ConversationListViewModel` 直接依赖协议；`makeConversationListViewModel()` 统一装配。
+- **GRDB 获取方式**：`project.yml` 使用 SPM 远程 `https://github.com/groue/GRDB.swift`（如 `6.29.3`）；与「本地 Vendor + SQLCipher」方案并存时需改回 `path` 并定义 `SQLITE_HAS_CODEC`。
+- 会话维度能力（协议位于 `StorageProtocols.swift`）：
   - 会话列表聚合查询
   - 标记已读
   - 置顶/取消置顶（`is_pinned`）
@@ -82,9 +89,10 @@ isProject: false
 
 - 偏差 A：原计划强调软删；当前代码已采用**物理删除**。
 - 偏差 B：原文引用了 `ConversationSummaryBuilder.swift`，当前工程已无该文件。
-- 偏差 C：原计划“Store 完全拆分为独立类”尚未完成，当前仍以 `MessageStorage` 聚合实现为主。
+- 偏差 C（**已闭合**）：存储已拆为 `MessageStore` / `ConversationStore` / `ReceiptStore` + `GRDBStorageCore`；`MessageStorage` 仅为门面，核心逻辑不再单文件聚合。
+- 偏差 D（**新增**）：GRDB 默认依赖由「仅本地 `Vendor/GRDB.swift`」调整为 **SPM 远程官方包**；当前默认构建**未**全局定义 `SQLITE_HAS_CODEC`，与「迭代 A 强制 SQLCipher」的原文假设不一致，需单独接 Vendor 或官方 SQLCipher 文档路径才能恢复加密强制策略。
 
-## 4) 任务状态重评估（按真实代码）
+## 4) 任务状态重评估（按真实代码，2026-04-07）
 
 ### ✅ 已完成
 
@@ -93,29 +101,31 @@ isProject: false
 - 文本有序 ID + 幂等键落库
 - 会话列表能力：未读、置顶、隐藏、删除
 - 回执读路径与关键写路径接入（已读/已播的主流程）
+- **存储层拆分**：`MessageStore` / `ConversationStore` / `ReceiptStore`、`GRDBStorageCore`、协议实现与门面并存
+- **Repository / 会话列表 ViewModel 协议化注入**（`any MessageStorageProtocol` 等）；单聊下 `conversationID` 与 `contactID` 仍等价使用
+- **附件完整性（写入 + 读路径）**：`GRDBStorageCore` 写入 `sha256`/`size_bytes`，读时校验失败回收本地文件；覆盖见 `MessageStorageAttachmentIntegrityTests`
+- **回归与计划相关测试**：`ConversationStorageRegressionTests`（置顶排序、隐藏与恢复）、`QueryPlanTests`（索引命中断言）、`MessageRepositoryTests`、`StorageStoresIntegrationTests`
+- **工程可解析 GRDB**：`project.yml` + `xcodegen` 生成带 `VoiceIM` scheme 的 Xcode 工程
 
 ### 🟡 部分完成（仍需继续）
 
-- 存储层拆分：接口已拆，类实现仍聚合在 `MessageStorage`
-- Repository/ViewModel 与“群聊语义”对齐：当前仍以 `contactID` 单聊语义为主
-- 安全加固：日志脱敏已做，SQLCipher/密钥轮换尚未落地
-- 验证体系：有编译回归，缺系统化性能与索引命中报告
+- Repository/ViewModel **群聊语义**：表模型可扩展，业务与 UI 仍以单聊 `contactID` 为主（对应迭代 F）
+- **安全加固**：日志脱敏已有；**默认 SPM GRDB 未接 SQLCipher**，`KeychainHelper` / `DatabaseManager` 中加密路径依赖 `SQLITE_HAS_CODEC`，与当前默认编译条件可能不一致
+- **验证体系**：单测与 `EXPLAIN QUERY PLAN` 有自动化；**缺**会话列表/分页压测与成文性能报告（迭代 D 文档化）
 
 ### ❌ 未完成
 
-- Keychain 密钥轮换闭环
-- `message_attachments` 的 `sha256` / `size_bytes` 生产级写入校验
-- Delivered 回执体系完整化（`delivered_at_ms` 业务闭环）
-- 群聊端到端能力（成员管理、消息路由、UI 展示）
+- **Keychain 密钥轮换闭环**（迭代 A）
+- **Delivered 回执体系完整化**（`delivered_at_ms` 业务闭环）
+- **群聊端到端能力**（成员管理、消息路由、UI 展示）（迭代 F）
 
-## 5) 下一步建议（按优先级）
+## 5) 下一步建议（按优先级，已对照进度删减）
 
-- P0：补齐安全闭环（SQLCipher + Keychain 密钥管理）
-- P0：补齐“隐藏会话/置顶会话”相关测试（持久化、排序、恢复）
-- P1：补齐附件完整性字段写入与校验流程
-- P1：输出 `EXPLAIN QUERY PLAN` 与会话列表/分页压测报告
-- P2：推进 `MessageStorage` 模块化拆分（`MessageStore`/`ConversationStore`/`ReceiptStore`）
-- P2：按群聊语义改造 Repository 与 ViewModel
+- P0：补齐安全闭环——在选定方案上 **统一** `SQLITE_HAS_CODEC`、SQLCipher 变体与 `project.yml`，恢复 Release 可验收的加密策略（迭代 A）
+- P0：会话隐藏/置顶：**用例已存在**，后续以 **scheme `VoiceIM` 跑测试** 为准（原 `VoiceIMTests` 独立 scheme 若缺失则依赖 `VoiceIM` 的 Test 动作）
+- P1：附件完整性：**写入与读校验已落地**，持续补边缘场景与失败上报策略即可
+- P1：输出 **书面** `EXPLAIN QUERY PLAN` 汇总 + 压测数据（单测之外的生产验收材料）（迭代 D）
+- P2：**存储模块化拆分已完成**；优先推进 **群聊语义**（迭代 F）
 
 ## 6) 验收口径（更新版）
 
@@ -123,11 +133,13 @@ isProject: false
 - 数据：外键无违规、幂等键不重复、会话设置状态与 UI 一致
 - 性能：会话列表与聊天分页在目标设备达标并有量化结果
 - 安全：数据库加密生效、密钥不落盘、日志可审计且脱敏
+- **说明（2026-04-07）**：在默认 SPM、未定义 `SQLITE_HAS_CODEC` 的构建下，「数据库加密生效」**尚未**作为默认验收项；接 SQLCipher 后重新纳入。
 
 ## 7) 可执行迭代清单（按工程落地）
 
 ### 迭代 A（P0）：安全闭环（SQLCipher + Keychain）
 
+- **进度（2026-04-07）**：🟡 代码层已预留 Keychain 与 `usePassphrase`/`cipherVersion`（`#if SQLITE_HAS_CODEC`）；**默认 SPM 构建未启用该宏**，与计划「Release 强制加密」未对齐，需决策 Vendor/SQLCipher SPM 后再收口。
 - **目标文件**
   - `VoiceIM/Core/Storage/Database/DatabaseManager.swift`
   - `VoiceIM/Core/Storage/Database/KeychainHelper.swift`
@@ -142,28 +154,31 @@ isProject: false
   - 数据库文件离线不可明文读取（SQLCipher 链路已接入）
   - 重启后可正常解锁和访问
 - **验收命令**
-  - `xcodebuild -project VoiceIM.xcodeproj -scheme VoiceIM -destination "generic/platform=iOS" -configuration Debug CODE_SIGNING_ALLOWED=NO build`
+  - `xcodebuild -project VoiceIM.xcodeproj -scheme VoiceIM -destination "generic/platform=iOS Simulator" -configuration Debug CODE_SIGNING_ALLOWED=NO build`
 
 ### 迭代 B（P0）：会话隐藏/置顶回归测试
 
+- **进度（2026-04-07）**：✅ `VoiceIMTests/ConversationStorageRegressionTests.swift` 已覆盖置顶排序、隐藏后收发消息恢复与未读；底层实现分布在 `ConversationStore` / `MessageStore`（经 `MessageStorage` 门面或直接 actor 调用均可测）。
 - **目标文件**
-  - `VoiceIM/Core/Storage/MessageStorage.swift`
+  - `VoiceIM/Core/Storage/ConversationStore.swift`、`MessageStore.swift`（及门面 `MessageStorage.swift`）
   - `VoiceIM/Core/ViewModel/ConversationListViewModel.swift`
   - `VoiceIMTests/`（新增或补全相关测试）
 - **实施动作**
-  - [x] 补齐置顶/取消置顶排序断言
-  - [x] 补齐隐藏后列表过滤 + 发送/接收新消息自动恢复断言
-  - [x] 补齐“取消置顶回原位（除非新消息）”断言
+  - 补齐置顶/取消置顶排序断言
+  - 补齐隐藏后列表过滤 + 发送/接收新消息自动恢复断言
+  - 补齐“取消置顶回原位（除非新消息）”断言
 - **完成标准**
-  - [x] 上述 3 组用例可稳定通过
+  - 上述 3 组用例可稳定通过
 - **验收命令**
-  - `xcodebuild test -project VoiceIM.xcodeproj -scheme VoiceIMTests -destination "platform=iOS Simulator,name=iPhone 17"`
-  - 结果：`TEST SUCCEEDED`（56 tests / 7 suites）
+  - `xcodebuild test -project VoiceIM.xcodeproj -scheme VoiceIM -destination "platform=iOS Simulator,name=iPhone 15" CODE_SIGNING_ALLOWED=NO`
+  - （以当前工程 `xcodebuild -list` 所列 scheme 为准）
 
 ### 迭代 C（P1）：附件完整性字段落地
 
+- **进度（2026-04-07）**：✅ 写入与读路径在 `GRDBStorageCore`；测试见 `MessageStorageAttachmentIntegrityTests`。
+
 - **目标文件**
-  - `VoiceIM/Core/Storage/MessageStorage.swift`
+  - `VoiceIM/Core/Storage/GRDBStorageCore.swift`
   - `VoiceIM/Core/Storage/Database/Records/MessageAttachmentRecord.swift`
   - `VoiceIM/Utilities/CacheUtilities.swift`（必要时）
 - **实施动作**
@@ -178,8 +193,10 @@ isProject: false
 
 ### 迭代 D（P1）：查询性能与索引命中报告
 
+- **进度（2026-04-07）**：🟡 `VoiceIMTests/QueryPlanTests.swift` 已对部分查询做 `EXPLAIN QUERY PLAN` 断言；**缺**附录级文档与压测数字。
+
 - **目标文件**
-  - `VoiceIM/Core/Storage/MessageStorage.swift`
+  - `ConversationStore.swift`、`MessageStore.swift`、`Migrations.swift`
   - `VoiceIM/Core/Storage/Database/Migrations.swift`
   - `README.md` 或计划文档附录（记录结果）
 - **实施动作**
@@ -194,6 +211,8 @@ isProject: false
 
 ### 迭代 E（P2）：存储层模块化拆分
 
+- **进度（2026-04-07）**：✅ 已完成；并补充 `MessageRepositoryTests`、`StorageStoresIntegrationTests`。
+
 - **目标文件**
   - `VoiceIM/Core/Storage/MessageStorage.swift`
   - `VoiceIM/Protocols/StorageProtocols.swift`
@@ -207,6 +226,8 @@ isProject: false
   - `xcodebuild -project VoiceIM.xcodeproj -scheme VoiceIM -destination "generic/platform=iOS" -configuration Debug CODE_SIGNING_ALLOWED=NO build`
 
 ### 迭代 F（P2）：群聊语义改造
+
+- **进度（2026-04-07）**：❌ 未开始（单聊路径为主）。
 
 - **目标文件**
   - `VoiceIM/Core/Repository/MessageRepository.swift`

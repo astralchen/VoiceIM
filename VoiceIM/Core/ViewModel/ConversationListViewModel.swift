@@ -3,15 +3,17 @@ import Combine
 
 /// 会话列表 ViewModel
 ///
-/// 使用 `MessageStorage.loadConversationSummaries()` 一次查询获取
-/// 各会话未读数与最后一条消息预览，避免对每条会话再查预览。
+/// 通过 `ConversationStorageProtocol` 聚合查询会话摘要；种子数据走 `MessageStorageProtocol`。
 @MainActor
 final class ConversationListViewModel: ObservableObject {
     @Published private(set) var conversations: [ConversationSummary] = []
     @Published var error: ChatError?
 
     private let contacts: [Contact]
-    private let storage: MessageStorage
+    /// DEBUG 种子数据等需写消息时用；与列表聚合查询分离。
+    private let messageStorage: any MessageStorageProtocol
+    /// 会话摘要、置顶/隐藏/删除、标记已读（协议层与 `ReceiptStore` 共享 SQL 实现）。
+    private let conversationStorage: any ConversationStorageProtocol
     private let logger: Logger
     #if DEBUG
     private static let seedFlagKey = "com.voiceim.debug.seeded.contacts.v1"
@@ -19,11 +21,13 @@ final class ConversationListViewModel: ObservableObject {
 
     init(
         contacts: [Contact] = Contact.mockContacts,
-        storage: MessageStorage = .shared,
+        messageStorage: any MessageStorageProtocol = MessageStore.shared,
+        conversationStorage: any ConversationStorageProtocol = ConversationStore.shared,
         logger: Logger = VoiceIM.logger
     ) {
         self.contacts = contacts
-        self.storage = storage
+        self.messageStorage = messageStorage
+        self.conversationStorage = conversationStorage
         self.logger = logger
     }
 
@@ -35,8 +39,8 @@ final class ConversationListViewModel: ObservableObject {
                 #endif
 
                 // 一次聚合查询替代逐会话 N+1
-                let dbSummaries = try await storage.loadConversationSummaries()
-                let allConversationIDs = Set(try await storage.loadAllConversationIDs())
+                let dbSummaries = try await conversationStorage.loadConversationSummaries()
+                let allConversationIDs = Set(try await conversationStorage.loadAllConversationIDs())
 
                 var summaries: [ConversationSummary] = []
                 for (conv, unread, isPinned, previewText, previewMs) in dbSummaries {
@@ -86,7 +90,7 @@ final class ConversationListViewModel: ObservableObject {
     func markConversationAsRead(contactID: String) {
         Task {
             do {
-                try await storage.markConversationAsRead(contactID: contactID)
+                try await conversationStorage.markConversationAsRead(contactID: contactID)
                 loadConversations()
             } catch {
                 logger.error("标记已读失败: \(error)")
@@ -98,7 +102,7 @@ final class ConversationListViewModel: ObservableObject {
     func setConversationPinned(contactID: String, pinned: Bool) {
         Task {
             do {
-                try await storage.setConversationPinned(contactID: contactID, pinned: pinned)
+                try await conversationStorage.setConversationPinned(contactID: contactID, pinned: pinned)
                 loadConversations()
             } catch {
                 logger.error("更新置顶状态失败: \(error)")
@@ -111,7 +115,7 @@ final class ConversationListViewModel: ObservableObject {
     func setConversationHidden(contactID: String, hidden: Bool) {
         Task {
             do {
-                try await storage.setConversationHidden(contactID: contactID, hidden: hidden)
+                try await conversationStorage.setConversationHidden(contactID: contactID, hidden: hidden)
                 loadConversations()
             } catch {
                 logger.error("更新会话显示状态失败: \(error)")
@@ -124,7 +128,7 @@ final class ConversationListViewModel: ObservableObject {
     func deleteConversation(contactID: String) {
         Task {
             do {
-                try await storage.deleteConversation(contactID: contactID)
+                try await conversationStorage.deleteConversation(contactID: contactID)
                 loadConversations()
             } catch {
                 logger.error("删除会话失败: \(error)")
@@ -141,13 +145,13 @@ final class ConversationListViewModel: ObservableObject {
 
         var hasExistingMessages = false
         for (index, contact) in contacts.enumerated() {
-            let existing = try await storage.load(contactID: contact.id)
+            let existing = try await messageStorage.load(contactID: contact.id)
             if !existing.isEmpty {
                 hasExistingMessages = true
                 continue
             }
             let seed = makeSeedMessages(for: contact, index: index)
-            try await storage.save(seed, contactID: contact.id)
+            try await messageStorage.save(seed, contactID: contact.id)
         }
 
         // 仅首次初始化时补数据；后续尊重用户删除行为，不再自动回填
