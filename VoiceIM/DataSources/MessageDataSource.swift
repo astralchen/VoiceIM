@@ -118,52 +118,28 @@ final class MessageDataSource: MessageDataSourceProtocol {
     /// 增量渲染：对新增/删除/更新做差分 apply，保留历史动画语义。
     func renderIncrementally(messages newMessages: [ChatMessage], preserveContentOffsetOnPrepend: Bool = false) {
         let oldMessages = self.messages
-        let oldIDs = Set(oldMessages.map(\.id))
-        let newIDs = Set(newMessages.map(\.id))
 
+        var prependAnchor: PrependAnchor?
         var oldHeight: CGFloat = 0
         var oldOffsetY: CGFloat = 0
         if preserveContentOffsetOnPrepend {
+            prependAnchor = makePrependAnchor(from: oldMessages)
             oldHeight = collectionView.contentSize.height
             oldOffsetY = collectionView.contentOffset.y
         }
 
         self.messages = newMessages
 
-        var snapshot = dataSource.snapshot()
-
-        // 删除已不存在消息
-        let idsToDelete = oldIDs.subtracting(newIDs)
-        if !idsToDelete.isEmpty {
-            let itemsToDelete = snapshot.itemIdentifiers(inSection: .main).filter { idsToDelete.contains($0.id) }
-            if !itemsToDelete.isEmpty {
-                snapshot.deleteItems(itemsToDelete)
-            }
-        }
-
-        // 新增消息：按顺序插入，尽量保留位置感知
-        if !newMessages.isEmpty {
-            let currentItems = snapshot.itemIdentifiers(inSection: .main)
-            let currentIDSet = Set(currentItems.map(\.id))
-            for (index, message) in newMessages.enumerated() where !currentIDSet.contains(message.id) {
-                let prevNew = index > 0 ? newMessages[index - 1] : nil
-                let nextNew = index + 1 < newMessages.count ? newMessages[index + 1] : nil
-                if let prev = prevNew, snapshot.indexOfItem(prev) != nil {
-                    snapshot.insertItems([message], afterItem: prev)
-                } else if let next = nextNew, snapshot.indexOfItem(next) != nil {
-                    snapshot.insertItems([message], beforeItem: next)
-                } else {
-                    snapshot.appendItems([message], toSection: .main)
-                }
-            }
-        }
+        // 直接按 newMessages 重建顺序，避免逐条 insert 带来的位置漂移。
+        var snapshot = NSDiffableDataSourceSnapshot<Section, ChatMessage>()
+        snapshot.appendSections([.main])
+        snapshot.appendItems(newMessages, toSection: .main)
 
         // 已存在消息：内容变化时 reload。
         // 注意不能用 `ChatMessage ==` 判断，因为该等价关系只比较 `id`，
         // `sendStatus/isPlayed/kind` 变化会被误判为“未变化”，导致 UI 不刷新。
         let oldByID = Dictionary(uniqueKeysWithValues: oldMessages.map { ($0.id, $0) })
-        let currentItems = snapshot.itemIdentifiers(inSection: .main)
-        let itemsToReload = currentItems.filter { item in
+        let itemsToReload = newMessages.filter { item in
             guard let old = oldByID[item.id],
                   let latest = newMessages.first(where: { $0.id == item.id }) else { return false }
             return hasRenderableChanges(from: old, to: latest)
@@ -172,13 +148,16 @@ final class MessageDataSource: MessageDataSourceProtocol {
             snapshot.reloadItems(itemsToReload)
         }
 
-        dataSource.apply(snapshot, animatingDifferences: true)
-
-        if preserveContentOffsetOnPrepend {
-            // 历史前插时补偿偏移，避免用户正在阅读的可见内容“被向下顶走”。
-            collectionView.layoutIfNeeded()
-            let heightDiff = collectionView.contentSize.height - oldHeight
-            collectionView.contentOffset.y = oldOffsetY + heightDiff
+        let shouldAnimateDifferences = !preserveContentOffsetOnPrepend
+        dataSource.apply(snapshot, animatingDifferences: shouldAnimateDifferences) { [weak self] in
+            guard let self, preserveContentOffsetOnPrepend else { return }
+            // 历史前插时以“首个可见锚点”恢复偏移；若锚点失效则退化为高度差补偿。
+            self.restoreOffsetAfterPrepend(
+                anchor: prependAnchor,
+                newMessages: newMessages,
+                oldHeight: oldHeight,
+                oldOffsetY: oldOffsetY
+            )
         }
     }
 
@@ -202,5 +181,64 @@ final class MessageDataSource: MessageDataSourceProtocol {
     func message(at index: Int) -> ChatMessage? {
         guard index >= 0 && index < messages.count else { return nil }
         return messages[index]
+    }
+
+    // MARK: - Prepend Offset Anchor
+
+    private struct PrependAnchor {
+        let messageID: String
+        let itemMinY: CGFloat
+        let offsetY: CGFloat
+    }
+
+    private func makePrependAnchor(from oldMessages: [ChatMessage]) -> PrependAnchor? {
+        let visible = collectionView.indexPathsForVisibleItems.sorted { lhs, rhs in
+            if lhs.section == rhs.section { return lhs.item < rhs.item }
+            return lhs.section < rhs.section
+        }
+        guard let topVisibleIndexPath = visible.first else { return nil }
+        guard topVisibleIndexPath.item < oldMessages.count else { return nil }
+        guard let attrs = collectionView.layoutAttributesForItem(at: topVisibleIndexPath) else { return nil }
+
+        return PrependAnchor(
+            messageID: oldMessages[topVisibleIndexPath.item].id,
+            itemMinY: attrs.frame.minY,
+            offsetY: collectionView.contentOffset.y
+        )
+    }
+
+    private func restoreOffsetAfterPrepend(
+        anchor: PrependAnchor?,
+        newMessages: [ChatMessage],
+        oldHeight: CGFloat,
+        oldOffsetY: CGFloat
+    ) {
+        collectionView.layoutIfNeeded()
+
+        var targetOffsetY: CGFloat?
+        if let anchor,
+           let newIndex = newMessages.firstIndex(where: { $0.id == anchor.messageID }) {
+            let newIndexPath = IndexPath(item: newIndex, section: 0)
+            if let newAttrs = collectionView.layoutAttributesForItem(at: newIndexPath) {
+                let delta = newAttrs.frame.minY - anchor.itemMinY
+                targetOffsetY = anchor.offsetY + delta
+            }
+        }
+
+        if targetOffsetY == nil {
+            // 锚点缺失（例如可见项瞬时为空）时，回退到高度差补偿。
+            let heightDiff = collectionView.contentSize.height - oldHeight
+            targetOffsetY = oldOffsetY + heightDiff
+        }
+
+        guard let targetOffsetY else { return }
+        let adjustedInset = collectionView.adjustedContentInset
+        let minOffsetY = -adjustedInset.top
+        let maxOffsetY = max(
+            minOffsetY,
+            collectionView.contentSize.height - collectionView.bounds.height + adjustedInset.bottom
+        )
+        let clampedOffsetY = min(max(targetOffsetY, minOffsetY), maxOffsetY)
+        collectionView.contentOffset.y = clampedOffsetY
     }
 }

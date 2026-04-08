@@ -198,6 +198,37 @@ struct MessageDataSourceTests {
         #expect(dataSource.messages[0].sendStatus == ChatMessage.SendStatus.failed)
     }
 
+    @Test("增量渲染：发送新消息应追加在末尾")
+    func testRenderIncrementallyAppendMessageKeepsOrder() {
+        let collectionView = makeTestCollectionView()
+        let dataSource = MessageDataSource(collectionView: collectionView)
+
+        let message1 = makeTestMessage(id: "m1", text: "消息1")
+        let message2 = makeTestMessage(id: "m2", text: "消息2")
+        dataSource.render(messages: [message1, message2], animatingDifferences: false)
+
+        let message3 = makeTestMessage(id: "m3", text: "新发送消息")
+        dataSource.renderIncrementally(messages: [message1, message2, message3])
+
+        #expect(dataSource.messages.map(\.id) == ["m1", "m2", "m3"])
+    }
+
+    @Test("增量渲染：历史前插后整体顺序保持与输入一致")
+    func testRenderIncrementallyPrependHistoryKeepsOrder() {
+        let collectionView = makeTestCollectionView()
+        let dataSource = MessageDataSource(collectionView: collectionView)
+
+        let current1 = makeTestMessage(id: "c1", text: "当前1")
+        let current2 = makeTestMessage(id: "c2", text: "当前2")
+        dataSource.render(messages: [current1, current2], animatingDifferences: false)
+
+        let history1 = makeTestMessage(id: "h1", text: "历史1")
+        let history2 = makeTestMessage(id: "h2", text: "历史2")
+        dataSource.renderIncrementally(messages: [history1, history2, current1, current2])
+
+        #expect(dataSource.messages.map(\.id) == ["h1", "h2", "c1", "c2"])
+    }
+
     // MARK: - Index and Message Lookup Tests
 
     @Test("查找消息索引")
