@@ -4,20 +4,12 @@ import UIKit
 ///
 /// # 职责
 /// - 管理 UICollectionViewDiffableDataSource 的创建和配置
-/// - 维护消息数组作为可变状态的真实来源（isPlayed、sendStatus 等字段）
-/// - 提供消息增删改查的统一接口
+/// - 保存当前渲染快照（来自 ViewModel），作为 cell provider 的读取缓存
+/// - 提供列表渲染与局部重绘能力
 /// - 处理历史消息插入时的滚动位置锚定
 ///
 /// # 设计考量
-/// 为什么需要独立的 messages 数组？
-///   DiffableDataSource 的 snapshot 存储的是插入时的 item 副本，
-///   后续对 isPlayed、sendStatus 的修改不会同步到 snapshot。
-///   使用 reloadItems 触发 cell provider 重新执行时，
-///   cell provider 收到的参数仍是 snapshot 内的旧值。
-///   因此必须维护独立的 messages 数组作为可变状态的真实来源。
-///
-///   升级到 iOS 15 后可改用 reconfigureItems + insertItems/deleteItems，
-///   届时可将新 item 写入 snapshot，messages 数组可移除。
+/// `messages` 仅作为当前 UI 渲染缓存，业务上的唯一真相源在 `ChatViewModel.messages`。
 @MainActor
 final class MessageDataSource: MessageDataSourceProtocol {
 
@@ -114,156 +106,91 @@ final class MessageDataSource: MessageDataSourceProtocol {
 
     // MARK: - Public Methods
 
-    /// 追加消息到列表底部
-    ///
-    /// - Parameters:
-    ///   - message: 要追加的消息
-    ///   - animatingDifferences: 是否显示插入动画（默认 false，避免动画异常）
-    func appendMessage(_ message: ChatMessage, animatingDifferences: Bool = false) {
-        messages.append(message)
-
-        var snapshot = dataSource.snapshot()
-        snapshot.appendItems([message], toSection: .main)
+    /// 根据 ViewModel 全量渲染消息列表。
+    func render(messages: [ChatMessage], animatingDifferences: Bool = true) {
+        self.messages = messages
+        var snapshot = NSDiffableDataSourceSnapshot<Section, ChatMessage>()
+        snapshot.appendSections([.main])
+        snapshot.appendItems(messages, toSection: .main)
         dataSource.apply(snapshot, animatingDifferences: animatingDifferences)
     }
 
-    /// 在列表头部插入历史消息，并保持用户当前阅读位置不跳动
-    ///
-    /// # 滚动位置锚定原理
-    /// 在头部插入 N 条消息后，内容总高度会增加 ΔH。
-    /// 若不修正 contentOffset，UICollectionView 会将原来可见的内容向下推移 ΔH，
-    /// 造成屏幕内容"跳动"。解决方式：
-    ///   1. 记录 apply 前的 contentOffset.y 和 contentSize.height
-    ///   2. apply(animatingDifferences: false) 同步完成后调用 layoutIfNeeded()
-    ///      强制立即计算新 contentSize（否则 contentSize 在下一个 RunLoop 才更新）
-    ///   3. 将 contentOffset.y 增加 ΔH，抵消内容下移，用户视线锚定不变
-    func prependMessages(_ newMessages: [ChatMessage]) {
-        guard !newMessages.isEmpty else { return }
+    /// 增量渲染：对新增/删除/更新做差分 apply，保留历史动画语义。
+    func renderIncrementally(messages newMessages: [ChatMessage], preserveContentOffsetOnPrepend: Bool = false) {
+        let oldMessages = self.messages
+        let oldIDs = Set(oldMessages.map(\.id))
+        let newIDs = Set(newMessages.map(\.id))
 
-        // 步骤 1：记录插入前的布局状态
-        let oldHeight = collectionView.contentSize.height
-        let oldOffsetY = collectionView.contentOffset.y
-
-        // 同步更新可变状态真实来源
-        messages.insert(contentsOf: newMessages, at: 0)
-
-        // 步骤 2：在 snapshot 头部插入
-        // insertItems(beforeItem:) 要求 beforeItem 已存在于 snapshot；
-        // 若列表为空（极端情况）则退化为 appendItems
-        var snapshot = dataSource.snapshot()
-        let existing = snapshot.itemIdentifiers(inSection: .main)
-        if let first = existing.first {
-            snapshot.insertItems(newMessages, beforeItem: first)
-        } else {
-            snapshot.appendItems(newMessages, toSection: .main)
+        var oldHeight: CGFloat = 0
+        var oldOffsetY: CGFloat = 0
+        if preserveContentOffsetOnPrepend {
+            oldHeight = collectionView.contentSize.height
+            oldOffsetY = collectionView.contentOffset.y
         }
-        // animatingDifferences: false → apply 在当前 RunLoop 同步执行，无插入/删除动画
-        dataSource.apply(snapshot, animatingDifferences: false)
 
-        // 步骤 3：强制立即布局，确保 contentSize 已反映新内容
-        collectionView.layoutIfNeeded()
-
-        // 步骤 4：偏移补偿，锚定用户视线
-        let heightDiff = collectionView.contentSize.height - oldHeight
-        collectionView.contentOffset.y = oldOffsetY + heightDiff
-    }
-
-    /// 删除消息
-    ///
-    /// - Parameter id: 消息 ID
-    /// - Returns: 被删除的消息（用于清理本地文件），若消息不存在则返回 nil
-    func deleteMessage(id: String) -> ChatMessage? {
-        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return nil }
-        let message = messages[idx]
-        messages.remove(at: idx)
+        self.messages = newMessages
 
         var snapshot = dataSource.snapshot()
-        snapshot.deleteItems([message])
+
+        // 删除已不存在消息
+        let idsToDelete = oldIDs.subtracting(newIDs)
+        if !idsToDelete.isEmpty {
+            let itemsToDelete = snapshot.itemIdentifiers(inSection: .main).filter { idsToDelete.contains($0.id) }
+            if !itemsToDelete.isEmpty {
+                snapshot.deleteItems(itemsToDelete)
+            }
+        }
+
+        // 新增消息：按顺序插入，尽量保留位置感知
+        if !newMessages.isEmpty {
+            let currentItems = snapshot.itemIdentifiers(inSection: .main)
+            let currentIDSet = Set(currentItems.map(\.id))
+            for (index, message) in newMessages.enumerated() where !currentIDSet.contains(message.id) {
+                let prevNew = index > 0 ? newMessages[index - 1] : nil
+                let nextNew = index + 1 < newMessages.count ? newMessages[index + 1] : nil
+                if let prev = prevNew, snapshot.indexOfItem(prev) != nil {
+                    snapshot.insertItems([message], afterItem: prev)
+                } else if let next = nextNew, snapshot.indexOfItem(next) != nil {
+                    snapshot.insertItems([message], beforeItem: next)
+                } else {
+                    snapshot.appendItems([message], toSection: .main)
+                }
+            }
+        }
+
+        // 已存在消息：内容变化时 reload。
+        // 注意不能用 `ChatMessage ==` 判断，因为该等价关系只比较 `id`，
+        // `sendStatus/isPlayed/kind` 变化会被误判为“未变化”，导致 UI 不刷新。
+        let oldByID = Dictionary(uniqueKeysWithValues: oldMessages.map { ($0.id, $0) })
+        let currentItems = snapshot.itemIdentifiers(inSection: .main)
+        let itemsToReload = currentItems.filter { item in
+            guard let old = oldByID[item.id],
+                  let latest = newMessages.first(where: { $0.id == item.id }) else { return false }
+            return hasRenderableChanges(from: old, to: latest)
+        }
+        if !itemsToReload.isEmpty {
+            snapshot.reloadItems(itemsToReload)
+        }
+
         dataSource.apply(snapshot, animatingDifferences: true)
 
-        return message
-    }
-
-    /// 替换消息（用于撤回）
-    ///
-    /// 将原消息替换为新消息，保留在列表中的位置。
-    /// 使用 insertItems + deleteItems 实现原地替换，带淡入淡出动画。
-    ///
-    /// - Parameters:
-    ///   - id: 原消息 ID
-    ///   - newMessage: 新消息（通常是 .recalled 类型）
-    func replaceMessage(id: String, with newMessage: ChatMessage) {
-        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
-        let oldMessage = messages[idx]
-        messages[idx] = newMessage
-
-        var snapshot = dataSource.snapshot()
-        if oldMessage.id == newMessage.id {
-            // 同一业务主键仅更新内容时，必须走 reloadItems；
-            // 直接 insert/delete 会被 Diffable 判定为同一标识冲突并崩溃。
-            snapshot.reloadItems([oldMessage])
-        } else {
-            snapshot.insertItems([newMessage], afterItem: oldMessage)
-            snapshot.deleteItems([oldMessage])
+        if preserveContentOffsetOnPrepend {
+            // 历史前插时补偿偏移，避免用户正在阅读的可见内容“被向下顶走”。
+            collectionView.layoutIfNeeded()
+            let heightDiff = collectionView.contentSize.height - oldHeight
+            collectionView.contentOffset.y = oldOffsetY + heightDiff
         }
-        dataSource.apply(snapshot, animatingDifferences: true)
     }
 
-    /// 标记消息为已播放
-    ///
-    /// # isPlayed 更新策略（iOS 13+）
-    /// 步骤：
-    ///   1. messages[idx].isPlayed = true（更新可变状态）
-    ///   2. snapshot.reloadItems([messages[idx]])（标记该 item 需重新配置）
-    ///   3. dataSource.apply(snapshot, animatingDifferences: false)
-    ///   4. cell provider 重新执行，从 messages 数组读到 isPlayed: true
-    ///   5. configure(isUnread: false) → cell 内部检测到状态从未读变已读，触发淡出动画
-    ///
-    /// 注意事项：
-    ///   - reloadItems 只标记重载，不修改 snapshot 内存储的 item 本身
-    ///   - cell provider 收到的参数仍是 snapshot 内的旧 item（isPlayed: false）
-    ///   - 必须从 messages 数组查询最新状态，messages 数组不可省略
-    ///   - animatingDifferences: false 避免 reloadItems 触发系统默认的 crossfade 动画，
-    ///     红点淡出动画由 cell 内部的 configure 方法负责
-    ///
-    /// # iOS 15+ 可升级方案
-    /// 使用 reconfigureItems + insertItems/deleteItems 将新 item 写入 snapshot：
-    /// ```swift
-    /// var snapshot = dataSource.snapshot()
-    /// guard let old = snapshot.itemIdentifiers(inSection: .main)
-    ///                         .first(where: { $0.id == id }), !old.isPlayed else { return }
-    /// var updated = old
-    /// updated.isPlayed = true
-    /// snapshot.insertItems([updated], afterItem: old)
-    /// snapshot.deleteItems([old])
-    /// snapshot.reconfigureItems([updated])
-    /// dataSource.apply(snapshot, animatingDifferences: false)
-    /// ```
-    /// 届时 messages 数组可移除。
-    func markAsPlayed(id: String) {
-        guard let idx = messages.firstIndex(where: { $0.id == id }),
-              !messages[idx].isPlayed else { return }
-        messages[idx].isPlayed = true
-        var snapshot = dataSource.snapshot()
-        snapshot.reloadItems([messages[idx]])
-        dataSource.apply(snapshot, animatingDifferences: false)
-    }
-
-    /// 更新消息发送状态
-    ///
-    /// 用于模拟网络发送过程：sending → delivered/failed。
-    /// 更新策略与 markAsPlayed 一致，通过 reloadItems 触发 cell 重新配置。
-    ///
-    /// - Parameters:
-    ///   - id: 消息 ID
-    ///   - status: 新的发送状态
-    func updateSendStatus(id: String, status: ChatMessage.SendStatus) {
-        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
-        messages[idx].sendStatus = status
-
-        var snapshot = dataSource.snapshot()
-        snapshot.reloadItems([messages[idx]])
-        dataSource.apply(snapshot, animatingDifferences: false)
+    /// `ChatMessage` 的 `==` 仅比较 `id`，这里显式比较影响渲染的字段。
+    private func hasRenderableChanges(from old: ChatMessage, to latest: ChatMessage) -> Bool {
+        old.kind.reuseID != latest.kind.reuseID
+            || String(describing: old.kind) != String(describing: latest.kind)
+            || old.isPlayed != latest.isPlayed
+            || old.isRead != latest.isRead
+            || old.sendStatus != latest.sendStatus
+            || old.sentAt != latest.sentAt
+            || old.sender.id != latest.sender.id
     }
 
     /// 查找消息索引

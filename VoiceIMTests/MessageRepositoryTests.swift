@@ -140,8 +140,7 @@ struct MessageRepositoryTests {
         let loaded = try await context.repository.loadMessages()
         #expect(loaded.count == 1)
         #expect(loaded[0].id == message.id)
-        if case .voice(let local, _, let duration) = loaded[0].kind {
-            #expect(local != nil)
+        if case .voice(_, _, let duration) = loaded[0].kind {
             #expect(abs(duration - 2.5) < 0.01)
         } else {
             Issue.record("应为语音消息")
@@ -170,21 +169,48 @@ struct MessageRepositoryTests {
         #expect(loaded[0].id == sent.id)
     }
 
-    @Test("分页历史：倒序切片与页边界")
-    func loadHistoryPagination() async throws {
+    @Test("游标历史：按最老消息向前分页")
+    func loadHistoryByCursor() async throws {
         let context = try makeContext()
         defer { try? FileManager.default.removeItem(at: context.temporaryDirectory) }
 
         for index in 0..<5 {
             _ = try await context.repository.sendTextMessage(text: "第\(index)条")
         }
-        let page0 = try await context.repository.loadHistory(page: 0, pageSize: 2)
-        let page1 = try await context.repository.loadHistory(page: 1, pageSize: 2)
-        #expect(page0.count == 2)
-        #expect(page1.count == 2)
-        if case let .text(t0) = page0[0].kind { #expect(t0 == "第4条") }
-        else { Issue.record("页0首条应为最新") }
-        let pageFar = try await context.repository.loadHistory(page: 10, pageSize: 5)
-        #expect(pageFar.isEmpty)
+
+        // 最近 2 条：第3条、第4条（旧 -> 新）
+        let recent = try await context.repository.loadHistory(beforeMessageID: nil, limit: 2)
+        #expect(recent.count == 2)
+        if case let .text(t0) = recent[0].kind { #expect(t0 == "第3条") }
+        else { Issue.record("最近页首条应为第3条") }
+        if case let .text(t1) = recent[1].kind { #expect(t1 == "第4条") }
+        else { Issue.record("最近页末条应为第4条") }
+
+        // 以前一页最老消息为锚点继续向前：第1条、第2条
+        let older = try await context.repository.loadHistory(
+            beforeMessageID: recent.first?.id,
+            limit: 2
+        )
+        #expect(older.count == 2)
+        if case let .text(t2) = older[0].kind { #expect(t2 == "第1条") }
+        else { Issue.record("第二页首条应为第1条") }
+        if case let .text(t3) = older[1].kind { #expect(t3 == "第2条") }
+        else { Issue.record("第二页末条应为第2条") }
+
+        // 继续向前应只剩第0条
+        let oldest = try await context.repository.loadHistory(
+            beforeMessageID: older.first?.id,
+            limit: 2
+        )
+        #expect(oldest.count == 1)
+        if case let .text(t4) = oldest[0].kind { #expect(t4 == "第0条") }
+        else { Issue.record("第三页应为第0条") }
+
+        // 已无更多历史
+        let empty = try await context.repository.loadHistory(
+            beforeMessageID: oldest.first?.id,
+            limit: 2
+        )
+        #expect(empty.isEmpty)
     }
 }

@@ -476,9 +476,14 @@ enum GRDBStorageCore {
         case 0:
             directoryURL = FileStorageManager.getVoiceDirectory()
         case 1:
-            directoryURL = FileStorageManager.getImageDirectory()
+            // 图片发送链路落在 ChatCacheBucket.image（Caches），
+            // 读路径需优先从同一目录还原，避免重进后因目录不一致丢图。
+            directoryURL = (try? ChatCacheBucket.image.ensureDirectory())
+                ?? FileStorageManager.getImageDirectory()
         case 2:
-            directoryURL = FileStorageManager.getVideoDirectory()
+            // 视频与缩略图缓存同理使用 Caches 目录，保持写读路径一致。
+            directoryURL = (try? ChatCacheBucket.video.ensureDirectory())
+                ?? FileStorageManager.getVideoDirectory()
         default:
             return nil
         }

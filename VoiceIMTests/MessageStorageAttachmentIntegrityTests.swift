@@ -48,7 +48,8 @@ struct MessageStorageAttachmentIntegrityTests {
         let (storage, _, tmpDir) = try makeStorage()
         defer { try? FileManager.default.removeItem(at: tmpDir) }
 
-        let localURL = FileStorageManager.getImageDirectory()
+        let imageCacheDirectory = try ChatCacheBucket.image.ensureDirectory()
+        let localURL = imageCacheDirectory
             .appendingPathComponent("integrity-\(UUID().uuidString).jpg")
         try FileManager.default.createDirectory(
             at: localURL.deletingLastPathComponent(),

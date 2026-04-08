@@ -17,8 +17,7 @@ final class VoiceChatViewController: UIViewController {
     // MARK: - 历史记录加载
 
     private var isLoadingHistory = false    // 防重复触发
-    private var historyPage = 0             // 已加载页数
-    private let maxHistoryPages = 3         // mock 数据最多 3 页
+    private var hasMoreHistory = true       // 是否还有可加载历史
     private let historyRefreshControl = UIRefreshControl()
 
     // MARK: - 消息预加载
@@ -79,8 +78,8 @@ final class VoiceChatViewController: UIViewController {
         // 订阅 ViewModel 状态
         bindViewModel()
 
-        // 加载消息
-        viewModel.loadMessages()
+        // 首次按需加载，避免页面重建/重复绑定触发全量重载。
+        viewModel.loadInitialIfNeeded()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -133,61 +132,40 @@ final class VoiceChatViewController: UIViewController {
 
     /// 更新消息列表
     private func updateMessages(_ messages: [ChatMessage]) {
-        // 使用增量更新策略，避免清空重建导致的动画问题
+        let oldMessages = messageDataSource.messages
+        let wasEmpty = oldMessages.isEmpty
+        let oldLastID = oldMessages.last?.id
+        let newLastID = messages.last?.id
+        let isPurePrepend = isHistoryPrepend(old: oldMessages, new: messages)
 
-        let currentIDs = Set(messageDataSource.messages.map { $0.id })
-        let newIDs = Set(messages.map { $0.id })
+        // DataSource 只负责渲染，消息真相源统一来自 ViewModel。
+        if wasEmpty {
+            messageDataSource.render(messages: messages, animatingDifferences: false)
+        } else {
+            // 非首屏加载走增量渲染：既保留插删动画，又避免全量 apply 带来的不必要闪动。
+            // 若判定为“历史前插”，同时启用 offset 锚定，保证阅读位置稳定。
+            messageDataSource.renderIncrementally(
+                messages: messages,
+                preserveContentOffsetOnPrepend: isPurePrepend
+            )
+        }
 
-        // 如果是首次加载，直接批量添加
-        if currentIDs.isEmpty {
-            for message in messages {
-                messageDataSource.appendMessage(message, animatingDifferences: false)
-            }
-            if !messages.isEmpty {
-                scrollToBottom(animated: false)
-            }
+        if wasEmpty, !messages.isEmpty {
+            scrollToBottom(animated: false)
             return
         }
 
-        // 增量更新：找出新增、删除、更新的消息
-        let toDelete = currentIDs.subtracting(newIDs)
-        let toAdd = messages.filter { !currentIDs.contains($0.id) }
-
-        // 先删除不存在的消息（批量删除，关闭动画）
-        for id in toDelete {
-            _ = messageDataSource.deleteMessage(id: id)
-        }
-
-        // 添加新消息（开启动画）
-        for message in toAdd {
-            messageDataSource.appendMessage(message, animatingDifferences: true)
-        }
-
-        // 更新已存在消息的状态（kind, isPlayed, sendStatus）
-        for message in messages where currentIDs.contains(message.id) {
-            if let index = messageDataSource.messages.firstIndex(where: { $0.id == message.id }) {
-                let current = messageDataSource.messages[index]
-
-                // kind 变化（撤回/编辑）→ 整体替换 cell
-                if current.kind.reuseID != message.kind.reuseID {
-                    messageDataSource.replaceMessage(id: message.id, with: message)
-                    continue
-                }
-
-                if current.isPlayed != message.isPlayed {
-                    messageDataSource.markAsPlayed(id: message.id)
-                }
-
-                if current.sendStatus != message.sendStatus {
-                    messageDataSource.updateSendStatus(id: message.id, status: message.sendStatus)
-                }
-            }
-        }
-
-        // 如果有新消息添加，滚动到底部
-        if !toAdd.isEmpty {
+        // 仅当末尾消息变化（新消息到达/发送）时滚到底；历史消息前插不会触发。
+        if oldLastID != nil, newLastID != oldLastID {
             scrollToBottom(animated: true)
         }
+    }
+
+    /// 判断是否为“历史消息前插”场景（新列表由若干前缀 + 旧列表组成）。
+    private func isHistoryPrepend(old: [ChatMessage], new: [ChatMessage]) -> Bool {
+        guard !old.isEmpty, new.count > old.count else { return false }
+        let suffix = new.suffix(old.count)
+        return zip(old, suffix).allSatisfy { $0.id == $1.id }
     }
 
     /// 处理错误
@@ -416,26 +394,32 @@ final class VoiceChatViewController: UIViewController {
     // MARK: - 历史消息加载
 
     @objc private func handleHistoryRefresh() {
-        guard !isLoadingHistory, historyPage < maxHistoryPages else {
+        guard !isLoadingHistory, hasMoreHistory else {
             historyRefreshControl.endRefreshing()
             return
         }
 
         isLoadingHistory = true
-        historyPage += 1
+        let oldestMessageID = messageDataSource.messages.first?.id
 
         // 从 ViewModel 加载历史消息
         Task { [weak self] in
             guard let self else { return }
 
             do {
-                let historyMessages = try await self.viewModel.loadHistory(page: self.historyPage)
+                let historyMessages = try await self.viewModel.loadHistory(
+                    beforeMessageID: oldestMessageID,
+                    limit: 3
+                )
 
                 await MainActor.run {
                     // 将历史消息插入到列表头部
                     if !historyMessages.isEmpty {
-                        self.messageDataSource.prependMessages(historyMessages)
+                        // 游标查询已返回“旧→新”，可直接前插。
+                        self.viewModel.prependHistoryMessages(historyMessages)
                         VoiceIM.logger.info("Prepended \(historyMessages.count) history messages")
+                    } else {
+                        self.hasMoreHistory = false
                     }
 
                     self.historyRefreshControl.endRefreshing()

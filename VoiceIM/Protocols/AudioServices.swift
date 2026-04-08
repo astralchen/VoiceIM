@@ -158,23 +158,11 @@ protocol MessageDataSourceProtocol {
     /// Cell 配置回调
     var cellConfigurator: ((UICollectionViewCell, ChatMessage) -> Void)? { get set }
 
-    /// 追加消息到列表底部
-    func appendMessage(_ message: ChatMessage, animatingDifferences: Bool)
+    /// 渲染完整消息列表（ViewModel 为唯一真相源）
+    func render(messages: [ChatMessage], animatingDifferences: Bool)
 
-    /// 在列表头部插入历史消息
-    func prependMessages(_ newMessages: [ChatMessage])
-
-    /// 删除消息
-    func deleteMessage(id: String) -> ChatMessage?
-
-    /// 替换消息（用于撤回）
-    func replaceMessage(id: String, with newMessage: ChatMessage)
-
-    /// 标记消息为已播放
-    func markAsPlayed(id: String)
-
-    /// 更新消息发送状态
-    func updateSendStatus(id: String, status: ChatMessage.SendStatus)
+    /// 按增量差分渲染，保留插入/删除/局部更新动画语义
+    func renderIncrementally(messages: [ChatMessage], preserveContentOffsetOnPrepend: Bool)
 
     /// 查找消息索引
     func index(of id: String) -> Int?

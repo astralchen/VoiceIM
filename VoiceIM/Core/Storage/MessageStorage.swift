@@ -46,6 +46,14 @@ actor MessageStorage {
         try await messages.load(contactID: contactID)
     }
 
+    func loadRecent(contactID: String, limit: Int) async throws -> [ChatMessage] {
+        try await messages.loadRecent(contactID: contactID, limit: limit)
+    }
+
+    func loadHistory(contactID: String, beforeMessageID: String?, limit: Int) async throws -> [ChatMessage] {
+        try await messages.loadHistory(contactID: contactID, beforeMessageID: beforeMessageID, limit: limit)
+    }
+
     func append(_ message: ChatMessage, contactID: String) async throws {
         try await messages.append(message, contactID: contactID)
     }

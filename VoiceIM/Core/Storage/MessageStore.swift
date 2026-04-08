@@ -65,6 +65,51 @@ actor MessageStore {
         }
     }
 
+    /// SQL 级只取最近 N 条，避免先全量读再截断带来的性能与内存浪费。
+    func loadRecent(contactID: String, limit: Int) throws -> [ChatMessage] {
+        guard limit > 0 else { return [] }
+        return try db.read { database in
+            let records = try MessageRecord
+                .filter(MessageRecord.Columns.conversationID == contactID)
+                .order(MessageRecord.Columns.seq.desc)
+                .limit(limit)
+                .fetchAll(database)
+            // 读取时按 seq 倒序取最近 N 条，返回前翻回正序，保证 UI 渲染时序稳定。
+            return try records.reversed().map { record in
+                try GRDBStorageCore.toChatMessage(record: record, in: database)
+            }
+        }
+    }
+
+    /// 按锚点拉取历史：返回 `beforeMessageID` 之前的 N 条；无锚点时退化为最近 N 条。
+    func loadHistory(contactID: String, beforeMessageID: String?, limit: Int) throws -> [ChatMessage] {
+        guard limit > 0 else { return [] }
+        return try db.read { database in
+            let anchorSeq: Int64? = try {
+                guard let beforeMessageID else { return nil }
+                let anchorRecord = try MessageRecord
+                    .filter(MessageRecord.Columns.id == beforeMessageID)
+                    .filter(MessageRecord.Columns.conversationID == contactID)
+                    .fetchOne(database)
+                return anchorRecord?.seq
+            }()
+
+            var query = MessageRecord
+                .filter(MessageRecord.Columns.conversationID == contactID)
+            if let anchorSeq {
+                query = query.filter(MessageRecord.Columns.seq < anchorSeq)
+            }
+            let records = try query
+                .order(MessageRecord.Columns.seq.desc)
+                .limit(limit)
+                .fetchAll(database)
+
+            return try records.reversed().map { record in
+                try GRDBStorageCore.toChatMessage(record: record, in: database)
+            }
+        }
+    }
+
     func append(_ message: ChatMessage, contactID: String) throws {
         try db.write { database in
             try GRDBStorageCore.ensureConversationAndMembers(contactID: contactID, in: database)

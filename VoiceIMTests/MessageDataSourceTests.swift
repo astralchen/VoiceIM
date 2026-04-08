@@ -39,22 +39,22 @@ struct MessageDataSourceTests {
         #expect(dataSource.messages.isEmpty)
     }
 
-    // MARK: - Append Message Tests
+    // MARK: - Render Tests
 
-    @Test("追加单条消息")
-    func testAppendMessage() {
+    @Test("渲染单条消息")
+    func testRenderSingleMessage() {
         let collectionView = makeTestCollectionView()
         let dataSource = MessageDataSource(collectionView: collectionView)
 
         let message = makeTestMessage(text: "第一条消息")
-        dataSource.appendMessage(message, animatingDifferences: false)
+        dataSource.render(messages: [message], animatingDifferences: false)
 
         #expect(dataSource.messages.count == 1)
         #expect(dataSource.messages[0].id == message.id)
     }
 
-    @Test("追加多条消息")
-    func testAppendMultipleMessages() {
+    @Test("渲染多条消息")
+    func testRenderMultipleMessages() {
         let collectionView = makeTestCollectionView()
         let dataSource = MessageDataSource(collectionView: collectionView)
 
@@ -62,9 +62,7 @@ struct MessageDataSourceTests {
         let message2 = makeTestMessage(text: "消息2")
         let message3 = makeTestMessage(text: "消息3")
 
-        dataSource.appendMessage(message1, animatingDifferences: false)
-        dataSource.appendMessage(message2, animatingDifferences: false)
-        dataSource.appendMessage(message3, animatingDifferences: false)
+        dataSource.render(messages: [message1, message2, message3], animatingDifferences: false)
 
         #expect(dataSource.messages.count == 3)
         #expect(dataSource.messages[0].id == message1.id)
@@ -72,21 +70,15 @@ struct MessageDataSourceTests {
         #expect(dataSource.messages[2].id == message3.id)
     }
 
-    // MARK: - Prepend Messages Tests
-
-    @Test("在头部插入历史消息")
-    func testPrependMessages() {
+    @Test("重渲染历史消息在前")
+    func testRenderHistoryBeforeCurrent() {
         let collectionView = makeTestCollectionView()
         let dataSource = MessageDataSource(collectionView: collectionView)
 
-        // 先添加一条消息
         let currentMessage = makeTestMessage(text: "当前消息")
-        dataSource.appendMessage(currentMessage, animatingDifferences: false)
-
-        // 在头部插入历史消息
         let historyMessage1 = makeTestMessage(text: "历史消息1")
         let historyMessage2 = makeTestMessage(text: "历史消息2")
-        dataSource.prependMessages([historyMessage1, historyMessage2])
+        dataSource.render(messages: [historyMessage1, historyMessage2, currentMessage], animatingDifferences: false)
 
         #expect(dataSource.messages.count == 3)
         #expect(dataSource.messages[0].id == historyMessage1.id)
@@ -94,10 +86,8 @@ struct MessageDataSourceTests {
         #expect(dataSource.messages[2].id == currentMessage.id)
     }
 
-    // MARK: - Delete Message Tests
-
-    @Test("删除消息")
-    func testDeleteMessage() {
+    @Test("重渲染可移除消息")
+    func testRenderCanRemoveMessage() {
         let collectionView = makeTestCollectionView()
         let dataSource = MessageDataSource(collectionView: collectionView)
 
@@ -105,32 +95,22 @@ struct MessageDataSourceTests {
         let message2 = makeTestMessage(text: "消息2")
         let message3 = makeTestMessage(text: "消息3")
 
-        dataSource.appendMessage(message1, animatingDifferences: false)
-        dataSource.appendMessage(message2, animatingDifferences: false)
-        dataSource.appendMessage(message3, animatingDifferences: false)
-
-        // 删除中间的消息
-        let deleted = dataSource.deleteMessage(id: message2.id)
-
-        #expect(deleted?.id == message2.id)
+        dataSource.render(messages: [message1, message2, message3], animatingDifferences: false)
+        dataSource.render(messages: [message1, message3], animatingDifferences: true)
         #expect(dataSource.messages.count == 2)
         #expect(dataSource.messages[0].id == message1.id)
         #expect(dataSource.messages[1].id == message3.id)
     }
 
-    @Test("删除不存在的消息")
-    func testDeleteNonExistentMessage() {
+    @Test("重渲染空列表")
+    func testRenderEmptyList() {
         let collectionView = makeTestCollectionView()
         let dataSource = MessageDataSource(collectionView: collectionView)
 
         let message = makeTestMessage(text: "消息")
-        dataSource.appendMessage(message, animatingDifferences: false)
-
-        // 尝试删除不存在的消息
-        let deleted = dataSource.deleteMessage(id: MessageIDGenerator.next())
-
-        #expect(deleted == nil)
-        #expect(dataSource.messages.count == 1)
+        dataSource.render(messages: [message], animatingDifferences: false)
+        dataSource.render(messages: [], animatingDifferences: true)
+        #expect(dataSource.messages.isEmpty)
     }
 
     // MARK: - Replace Message Tests
@@ -141,7 +121,7 @@ struct MessageDataSourceTests {
         let dataSource = MessageDataSource(collectionView: collectionView)
 
         let originalMessage = makeTestMessage(text: "原始消息")
-        dataSource.appendMessage(originalMessage, animatingDifferences: false)
+        dataSource.render(messages: [originalMessage], animatingDifferences: false)
 
         // 创建撤回消息
         let recalledMessage = ChatMessage(
@@ -154,7 +134,7 @@ struct MessageDataSourceTests {
             sendStatus: .delivered
         )
 
-        dataSource.replaceMessage(id: originalMessage.id, with: recalledMessage)
+        dataSource.render(messages: [recalledMessage], animatingDifferences: true)
 
         #expect(dataSource.messages.count == 1)
         if case .recalled(let text) = dataSource.messages[0].kind {
@@ -164,10 +144,8 @@ struct MessageDataSourceTests {
         }
     }
 
-    // MARK: - Mark As Played Tests
-
-    @Test("标记消息为已播放")
-    func testMarkAsPlayed() {
+    @Test("重渲染可更新已播状态")
+    func testRenderUpdatesPlayedState() {
         let collectionView = makeTestCollectionView()
         let dataSource = MessageDataSource(collectionView: collectionView)
 
@@ -183,44 +161,39 @@ struct MessageDataSourceTests {
         )
         message.isPlayed = false
 
-        dataSource.appendMessage(message, animatingDifferences: false)
-
-        // 标记为已播放
-        dataSource.markAsPlayed(id: message.id)
+        dataSource.render(messages: [message], animatingDifferences: false)
+        message.isPlayed = true
+        dataSource.render(messages: [message], animatingDifferences: false)
 
         #expect(dataSource.messages[0].isPlayed == true)
     }
 
-    // MARK: - Update Send Status Tests
-
-    @Test("更新消息发送状态")
-    func testUpdateSendStatus() {
+    @Test("重渲染可更新发送状态")
+    func testRenderUpdatesSendStatus() {
         let collectionView = makeTestCollectionView()
         let dataSource = MessageDataSource(collectionView: collectionView)
 
         var message = makeTestMessage(text: "发送中的消息")
         message.sendStatus = .sending
 
-        dataSource.appendMessage(message, animatingDifferences: false)
-
-        // 更新为已送达
-        dataSource.updateSendStatus(id: message.id, status: ChatMessage.SendStatus.delivered)
+        dataSource.render(messages: [message], animatingDifferences: false)
+        message.sendStatus = .delivered
+        dataSource.render(messages: [message], animatingDifferences: false)
 
         #expect(dataSource.messages[0].sendStatus == ChatMessage.SendStatus.delivered)
     }
 
-    @Test("更新为发送失败状态")
-    func testUpdateSendStatusToFailed() {
+    @Test("重渲染可更新失败状态")
+    func testRenderUpdatesSendStatusToFailed() {
         let collectionView = makeTestCollectionView()
         let dataSource = MessageDataSource(collectionView: collectionView)
 
         var message = makeTestMessage(text: "发送失败的消息")
         message.sendStatus = .sending
 
-        dataSource.appendMessage(message, animatingDifferences: false)
-
-        // 更新为失败
-        dataSource.updateSendStatus(id: message.id, status: ChatMessage.SendStatus.failed)
+        dataSource.render(messages: [message], animatingDifferences: false)
+        message.sendStatus = .failed
+        dataSource.render(messages: [message], animatingDifferences: false)
 
         #expect(dataSource.messages[0].sendStatus == ChatMessage.SendStatus.failed)
     }
@@ -236,9 +209,7 @@ struct MessageDataSourceTests {
         let message2 = makeTestMessage(text: "消息2")
         let message3 = makeTestMessage(text: "消息3")
 
-        dataSource.appendMessage(message1, animatingDifferences: false)
-        dataSource.appendMessage(message2, animatingDifferences: false)
-        dataSource.appendMessage(message3, animatingDifferences: false)
+        dataSource.render(messages: [message1, message2, message3], animatingDifferences: false)
 
         #expect(dataSource.index(of: message1.id) == 0)
         #expect(dataSource.index(of: message2.id) == 1)
@@ -254,8 +225,7 @@ struct MessageDataSourceTests {
         let message1 = makeTestMessage(text: "消息1")
         let message2 = makeTestMessage(text: "消息2")
 
-        dataSource.appendMessage(message1, animatingDifferences: false)
-        dataSource.appendMessage(message2, animatingDifferences: false)
+        dataSource.render(messages: [message1, message2], animatingDifferences: false)
 
         #expect(dataSource.message(at: 0)?.id == message1.id)
         #expect(dataSource.message(at: 1)?.id == message2.id)
@@ -269,10 +239,6 @@ struct MessageDataSourceTests {
     func testEmptyDataSourceOperations() {
         let collectionView = makeTestCollectionView()
         let dataSource = MessageDataSource(collectionView: collectionView)
-
-        // 删除不存在的消息
-        let deleted = dataSource.deleteMessage(id: MessageIDGenerator.next())
-        #expect(deleted == nil)
 
         // 查找不存在的索引
         let index = dataSource.index(of: MessageIDGenerator.next())

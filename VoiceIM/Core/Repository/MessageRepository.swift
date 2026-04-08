@@ -48,6 +48,18 @@ final class MessageRepository {
         }
     }
 
+    /// 加载最近 N 条消息（按会话时间正序返回：旧 -> 新）。
+    func loadRecentMessages(limit: Int) async throws -> [ChatMessage] {
+        do {
+            let recent = try await messageStorage.loadRecent(contactID: conversationID, limit: limit)
+            logger.info("Loaded recent \(recent.count) messages from storage")
+            return recent
+        } catch {
+            logger.error("Failed to load recent messages: \(error)")
+            throw ChatError.storageReadFailed
+        }
+    }
+
     func sendTextMessage(text: String, sender: Sender = .me) async throws -> ChatMessage {
         do {
             let message = ChatMessage.text(text, sender: sender, sentAt: Date())
@@ -220,14 +232,14 @@ final class MessageRepository {
         }
     }
 
-    func loadHistory(page: Int, pageSize: Int = 20) async throws -> [ChatMessage] {
+    /// 游标分页历史：基于最老可见消息 ID 向前拉取，更适合生产环境实时插入场景。
+    func loadHistory(beforeMessageID: String?, limit: Int = 20) async throws -> [ChatMessage] {
         do {
-            let allMessages = try await messageStorage.load(contactID: conversationID)
-            let startIndex = page * pageSize
-            guard startIndex < allMessages.count else { return [] }
-            let endIndex = min(startIndex + pageSize, allMessages.count)
-            let slice = Array(allMessages.reversed()[startIndex..<endIndex])
-            return slice
+            return try await messageStorage.loadHistory(
+                contactID: conversationID,
+                beforeMessageID: beforeMessageID,
+                limit: limit
+            )
         } catch {
             logger.error("Failed to load history: \(error)")
             throw ChatError.storageReadFailed

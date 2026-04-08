@@ -12,6 +12,13 @@ protocol MessageStorageProtocol: Actor {
     /// 加载指定会话的消息列表
     func load(contactID: String) throws -> [ChatMessage]
 
+    /// 加载指定会话最近 N 条消息（按时间正序：旧 -> 新）
+    func loadRecent(contactID: String, limit: Int) throws -> [ChatMessage]
+
+    /// 加载锚点消息之前的 N 条历史消息（按时间正序：旧 -> 新）
+    /// - Parameter beforeMessageID: 锚点消息 ID；为 nil 时返回最近 N 条
+    func loadHistory(contactID: String, beforeMessageID: String?, limit: Int) throws -> [ChatMessage]
+
     /// 追加单条消息到指定会话
     func append(_ message: ChatMessage, contactID: String) throws
 

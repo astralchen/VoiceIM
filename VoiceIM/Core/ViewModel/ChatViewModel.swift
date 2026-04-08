@@ -20,18 +20,6 @@ final class ChatViewModel: ObservableObject {
     /// 消息列表
     @Published private(set) var messages: [ChatMessage] = []
 
-    /// 正在播放的消息 ID
-    @Published private(set) var playingMessageID: String?
-
-    /// 播放进度（0.0 ~ 1.0）
-    @Published private(set) var playbackProgress: Float = 0
-
-    /// 是否正在录音
-    @Published private(set) var isRecording: Bool = false
-
-    /// 录音时长（秒）
-    @Published private(set) var recordingDuration: Int = 0
-
     /// 错误信息
     @Published var error: ChatError?
     let contact: Contact
@@ -53,6 +41,9 @@ final class ChatViewModel: ObservableObject {
     // MARK: - Private Properties
 
     private var activeTasks: [UUID: Task<Void, Never>] = [:]
+    private var hasLoadedInitialMessages = false
+    private var isLoadingMessages = false
+    private let initialRecentMessageLimit = 5
 
     // MARK: - Init
 
@@ -84,15 +75,39 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - Message Operations
 
-    /// 加载消息列表（由 ViewController 的 viewDidLoad 调用，不在 init 中自动触发）
+    /// 首次进入会话时加载消息；已加载过则跳过，避免重复全量拉取。
+    func loadInitialIfNeeded() {
+        guard !hasLoadedInitialMessages else { return }
+        performLoadMessages(force: false)
+    }
+
+    /// 显式刷新消息（例如手动下拉刷新/重连后同步）。
+    func refreshMessages() {
+        performLoadMessages(force: true)
+    }
+
+    /// 兼容旧调用，等价于首次按需加载。
     func loadMessages() {
+        loadInitialIfNeeded()
+    }
+
+    private func performLoadMessages(force: Bool) {
+        guard force || !hasLoadedInitialMessages else { return }
+        guard !isLoadingMessages else { return }
+        isLoadingMessages = true
         let taskID = UUID()
         let task = Task { [weak self] in
             guard let self else { return }
+            defer {
+                isLoadingMessages = false
+                activeTasks.removeValue(forKey: taskID)
+            }
             do {
-                let loaded = try await repository.loadMessages()
+                // 生产化策略：首屏先拉最近 N 条，历史通过分页逐步补齐。
+                let loaded = try await repository.loadRecentMessages(limit: initialRecentMessageLimit)
                 guard !Task.isCancelled else { return }
                 messages = loaded
+                hasLoadedInitialMessages = true
                 try? await repository.markConversationAsRead()
                 for index in messages.indices where !messages[index].isOutgoing {
                     messages[index].isRead = true
@@ -103,7 +118,6 @@ final class ChatViewModel: ObservableObject {
                 logger.error("Failed to load messages: \(error)")
                 self.error = error as? ChatError ?? .unknown(error)
             }
-            activeTasks.removeValue(forKey: taskID)
         }
         activeTasks[taskID] = task
     }
@@ -382,19 +396,31 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - History Loading
 
-    /// 加载历史消息
+    /// 按锚点加载历史消息
     ///
-    /// - Parameter page: 页码（从 0 开始）
-    /// - Returns: 历史消息列表
-    func loadHistory(page: Int) async throws -> [ChatMessage] {
+    /// - Parameter beforeMessageID: 当前最老可见消息 ID；为 nil 时返回最近一页
+    /// - Returns: 历史消息列表（旧 -> 新）
+    func loadHistory(beforeMessageID: String?, limit: Int = 20) async throws -> [ChatMessage] {
         do {
-            let historyMessages = try await repository.loadHistory(page: page, pageSize: 20)
-            logger.info("Loaded \(historyMessages.count) history messages for page \(page)")
+            let historyMessages = try await repository.loadHistory(
+                beforeMessageID: beforeMessageID,
+                limit: limit
+            )
+            logger.info("Loaded \(historyMessages.count) history messages before \(beforeMessageID ?? "nil")")
             return historyMessages
         } catch {
             logger.error("Failed to load history: \(error)")
             throw error
         }
+    }
+
+    /// 将历史消息并入当前列表头部（去重），保持 `messages` 作为唯一真相源。
+    func prependHistoryMessages(_ historyMessages: [ChatMessage]) {
+        guard !historyMessages.isEmpty else { return }
+        let existingIDs = Set(messages.map(\.id))
+        let deduped = historyMessages.filter { !existingIDs.contains($0.id) }
+        guard !deduped.isEmpty else { return }
+        messages.insert(contentsOf: deduped, at: 0)
     }
 
     // MARK: - Playback Operations
@@ -432,7 +458,6 @@ final class ChatViewModel: ObservableObject {
 
             do {
                 try playbackService.play(id: id, url: playURL)
-                playingMessageID = id
 
                 if !message.isPlayed && !message.isOutgoing {
                     markAsPlayed(id: id)
@@ -447,17 +472,10 @@ final class ChatViewModel: ObservableObject {
     /// 停止播放
     func stopPlayback() {
         playbackService.stopCurrent()
-        playingMessageID = nil
-        playbackProgress = 0
     }
 
     /// 播放器 `onStop` 时同步 ViewModel 状态（含被视频互斥打断的场景）
-    func handlePlaybackStopped(id: String) {
-        if playingMessageID == id {
-            playingMessageID = nil
-            playbackProgress = 0
-        }
-    }
+    func handlePlaybackStopped(id _: String) {}
 
     // MARK: - Private Methods
 
